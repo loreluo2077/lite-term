@@ -1,0 +1,17 @@
+{
+  "name": "@localterm/session-local",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@localterm/session-core": "workspace:*",
+    "@localterm/shared": "workspace:*",
+    "node-pty": "1.1.0-beta34"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}
