@@ -22,10 +22,13 @@ type RuntimeState = {
   ready: boolean;
   exited: boolean;
   activeSocket: WebSocket | null;
+  pendingOutput: Uint8Array[];
+  pendingOutputBytes: number;
 };
 
 let runtime: RuntimeState | null = null;
 let shuttingDown = false;
+const MAX_PENDING_OUTPUT_BYTES = 256 * 1024;
 
 function sendParent(msg: WorkerChildToParentMessage) {
   if (typeof process.send === "function") {
@@ -38,6 +41,35 @@ function sendSocketEvent(event: object) {
     return;
   }
   runtime.activeSocket.send(JSON.stringify(event));
+}
+
+function enqueuePendingOutput(chunk: Uint8Array) {
+  if (!runtime) return;
+  runtime.pendingOutput.push(chunk);
+  runtime.pendingOutputBytes += chunk.byteLength;
+
+  // Trim oldest chunks to keep memory bounded when no client is attached.
+  while (runtime.pendingOutputBytes > MAX_PENDING_OUTPUT_BYTES && runtime.pendingOutput.length > 0) {
+    const removed = runtime.pendingOutput.shift();
+    if (removed) runtime.pendingOutputBytes -= removed.byteLength;
+  }
+}
+
+function sendSocketOutput(chunk: Uint8Array) {
+  if (!runtime?.activeSocket || runtime.activeSocket.readyState !== runtime.activeSocket.OPEN) {
+    enqueuePendingOutput(chunk);
+    return;
+  }
+  runtime.activeSocket.send(Buffer.from(chunk));
+}
+
+function flushPendingOutput() {
+  if (!runtime?.activeSocket || runtime.activeSocket.readyState !== runtime.activeSocket.OPEN) return;
+  for (const chunk of runtime.pendingOutput) {
+    runtime.activeSocket.send(Buffer.from(chunk));
+  }
+  runtime.pendingOutput = [];
+  runtime.pendingOutputBytes = 0;
 }
 
 function closeServer() {
@@ -88,11 +120,14 @@ async function initRuntime(message: unknown) {
     adapter,
     ready: false,
     exited: false,
-    activeSocket: null
+    activeSocket: null,
+    pendingOutput: [],
+    pendingOutputBytes: 0
   };
 
   server.on("connection", (socket) => {
     runtime!.activeSocket = socket;
+    flushPendingOutput();
 
     if (runtime?.ready) {
       sendSocketEvent({
@@ -129,8 +164,7 @@ async function initRuntime(message: unknown) {
   });
 
   adapter.onData((data) => {
-    if (!runtime?.activeSocket || runtime.activeSocket.readyState !== runtime.activeSocket.OPEN) return;
-    runtime.activeSocket.send(Buffer.from(data));
+    sendSocketOutput(data);
   });
 
   adapter.onError((error) => {

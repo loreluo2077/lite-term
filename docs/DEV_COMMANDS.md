@@ -26,6 +26,14 @@
 当前实现状态：
 - 已接通 `typecheck + test:integration`（lint 暂未接线）
 
+### `pnpm acceptance:auto`
+
+用途：
+- 一键执行当前阶段可自动化的验收项
+
+当前实现状态：
+- 已接通 `verify:quick + renderer build + debug:sessions`
+
 ### `pnpm test:integration`
 
 用途：
@@ -103,3 +111,4 @@ npx node-gyp rebuild
 2. `pnpm typecheck`
 3. `pnpm test:integration`
 4. `pnpm verify:quick`
+5. `pnpm acceptance:auto`

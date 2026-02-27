@@ -25,24 +25,43 @@ function isPidAlive(pid: number) {
   }
 }
 
-const snapshot = readRegistrySnapshot();
-const keepPids = new Set(
-  (snapshot?.sessions ?? [])
-    .map((s) => s.pid)
-    .filter((pid) => Number.isInteger(pid) && pid > 0 && isPidAlive(pid))
-);
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-const candidates = listWorkerCandidates();
-const orphans = candidates.filter((c) => !keepPids.has(c.pid));
+async function main() {
+  const snapshot = readRegistrySnapshot();
+  const keepPids = new Set(
+    (snapshot?.sessions ?? [])
+      .map((s) => s.pid)
+      .filter((pid) => Number.isInteger(pid) && pid > 0 && isPidAlive(pid))
+  );
 
-console.log(JSON.stringify({ keepPids: [...keepPids], orphans }, null, 2));
+  const candidates = listWorkerCandidates();
+  const orphans = candidates.filter((c) => !keepPids.has(c.pid));
 
-for (const orphan of orphans) {
-  try {
-    process.kill(orphan.pid, "SIGTERM");
-    console.log(`SIGTERM ${orphan.pid}`);
-  } catch (e) {
-    console.warn(`Failed to SIGTERM ${orphan.pid}:`, e);
+  console.log(JSON.stringify({ keepPids: [...keepPids], orphans }, null, 2));
+
+  for (const orphan of orphans) {
+    try {
+      process.kill(orphan.pid, "SIGTERM");
+      console.log(`SIGTERM ${orphan.pid}`);
+    } catch (e) {
+      console.warn(`Failed to SIGTERM ${orphan.pid}:`, e);
+    }
+  }
+
+  await sleep(500);
+
+  for (const orphan of orphans) {
+    if (!isPidAlive(orphan.pid)) continue;
+    try {
+      process.kill(orphan.pid, "SIGKILL");
+      console.log(`SIGKILL ${orphan.pid}`);
+    } catch (e) {
+      console.warn(`Failed to SIGKILL ${orphan.pid}:`, e);
+    }
   }
 }
 
+void main();

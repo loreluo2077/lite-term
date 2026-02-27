@@ -19,11 +19,10 @@ function defaultShell(): string {
 }
 
 function defaultShellArgs(shell: string): string[] {
-  if (process.platform === "win32") {
-    return [];
-  }
-  if (shell.includes("bash")) return ["--noprofile", "--norc"];
-  if (shell.includes("zsh")) return ["-f"];
+  if (process.platform === "win32") return [];
+  // Runtime default should respect user's shell startup files so prompt/env
+  // (e.g. conda "(base)") behaves like a normal interactive terminal.
+  void shell;
   return [];
 }
 

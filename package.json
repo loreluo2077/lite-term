@@ -29,6 +29,7 @@
     "test:integration": "tsx --test tests/integration/*.test.ts",
     "test:e2e": "echo \"TODO: wire Electron E2E tests\"",
     "verify:quick": "pnpm typecheck && pnpm test:integration",
+    "acceptance:auto": "pnpm verify:quick && pnpm --filter @localterm/renderer build && pnpm debug:sessions",
     "verify:ci": "echo \"TODO: CI full verification pipeline\"",
     "debug:sessions": "tsx scripts/debug-sessions.ts",
     "kill:orphans": "tsx scripts/kill-orphans.ts"

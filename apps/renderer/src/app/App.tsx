@@ -66,7 +66,15 @@ export function App() {
         rows: 30
       })) as CreateLocalSessionResponse;
       setTabs((prev) =>
-        prev.map((t) => (t.id === tabId ? { ...t, session, status: "starting" } : t))
+        prev.map((t) =>
+          t.id === tabId
+            ? {
+                ...t,
+                session,
+                status: session.status
+              }
+            : t
+        )
       );
     } catch (error) {
       setTabs((prev) =>
