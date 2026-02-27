@@ -40,6 +40,9 @@ export class WorkerProcessManager {
       stdio: ["ignore", "pipe", "pipe", "ipc"],
       env: {
         ...process.env,
+        // Worker startup already uses explicit "--import tsx".
+        // Avoid leaking parent NODE_OPTIONS into worker/session shells.
+        NODE_OPTIONS: undefined,
         ELECTRON_RUN_AS_NODE: "1"
       }
     });

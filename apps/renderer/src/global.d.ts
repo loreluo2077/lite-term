@@ -4,7 +4,8 @@ import type {
   KillSessionRequest,
   ListSessionsResponse,
   OkResponse,
-  ResizeSessionRequest
+  ResizeSessionRequest,
+  SystemMetricsResponse
 } from "@localterm/shared";
 
 declare global {
@@ -15,6 +16,9 @@ declare global {
         resizeSession(payload: ResizeSessionRequest): Promise<OkResponse>;
         killSession(payload: KillSessionRequest): Promise<OkResponse>;
         listSessions(): Promise<ListSessionsResponse>;
+      };
+      system: {
+        getMetrics(): Promise<SystemMetricsResponse>;
       };
     };
   }

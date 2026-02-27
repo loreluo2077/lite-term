@@ -9,8 +9,6 @@ export type TabRecord = {
   title: string;
   session?: CreateLocalSessionResponse;
   status: "idle" | "starting" | "ready" | "exited" | "error";
-  output: string;
-  inputBuffer: string;
   wsConnected: boolean;
 };
 

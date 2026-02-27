@@ -13,7 +13,8 @@ export const IPC_CHANNELS = {
   sessionCreateLocal: "session:createLocal",
   sessionResize: "session:resize",
   sessionKill: "session:kill",
-  sessionList: "session:list"
+  sessionList: "session:list",
+  systemMetrics: "system:getMetrics"
 } as const;
 
 export const DEFAULTS = {

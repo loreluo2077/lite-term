@@ -32,6 +32,7 @@
     "acceptance:auto": "pnpm verify:quick && pnpm --filter @localterm/renderer build && pnpm debug:sessions",
     "verify:ci": "echo \"TODO: CI full verification pipeline\"",
     "debug:sessions": "tsx scripts/debug-sessions.ts",
-    "kill:orphans": "tsx scripts/kill-orphans.ts"
+    "kill:orphans": "tsx scripts/kill-orphans.ts",
+    "perf:stress": "tsx scripts/perf-session-stress.ts"
   }
 }

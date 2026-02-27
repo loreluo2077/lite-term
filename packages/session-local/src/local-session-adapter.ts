@@ -26,6 +26,16 @@ function defaultShellArgs(shell: string): string[] {
   return [];
 }
 
+function sanitizeNodeOptions(nodeOptions: string | undefined) {
+  if (!nodeOptions) return nodeOptions;
+  // Remove dev bootstrap option leaked from Electron startup scripts.
+  const cleaned = nodeOptions
+    .replace(/(?:^|\s)--import(?:=|\s+)tsx(?=\s|$)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || undefined;
+}
+
 export class LocalSessionAdapter extends BaseSessionAdapter {
   private readonly options: LocalSessionAdapterOptions;
   private ptyProcess: IPty | null = null;
@@ -44,6 +54,14 @@ export class LocalSessionAdapter extends BaseSessionAdapter {
       ...process.env,
       ...(this.options.env ?? {})
     } as Record<string, string>;
+    const nodeOptions = sanitizeNodeOptions(env.NODE_OPTIONS);
+    if (nodeOptions) {
+      env.NODE_OPTIONS = nodeOptions;
+    } else {
+      delete env.NODE_OPTIONS;
+    }
+    // Internal Electron worker bootstrap var should not leak to user shells.
+    delete env.ELECTRON_RUN_AS_NODE;
 
     const termName = process.platform === "win32" ? "xterm-color" : "xterm-256color";
     this.ptyProcess = pty.spawn(shell, shellArgs, {

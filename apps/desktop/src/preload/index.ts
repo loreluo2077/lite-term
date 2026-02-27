@@ -4,6 +4,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import {
   IPC_CHANNELS,
+  type SystemMetricsResponse,
   type CreateLocalSessionRequest,
   type KillSessionRequest,
   type ResizeSessionRequest
@@ -18,6 +19,9 @@ const api = {
     killSession: (payload: KillSessionRequest) =>
       ipcRenderer.invoke(IPC_CHANNELS.sessionKill, payload),
     listSessions: () => ipcRenderer.invoke(IPC_CHANNELS.sessionList)
+  },
+  system: {
+    getMetrics: () => ipcRenderer.invoke(IPC_CHANNELS.systemMetrics) as Promise<SystemMetricsResponse>
   }
 };
 

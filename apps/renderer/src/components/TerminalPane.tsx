@@ -21,20 +21,37 @@ import {
 
 type Props = {
   tab: TabRecord;
-  onAppendOutput: (tabId: string, chunk: string) => void;
+  isActive: boolean;
+  onTraffic: (tabId: string, bytes: number, lines: number) => void;
+  onCommandChannel: (tabId: string, send: ((text: string) => void) | null) => void;
   onStatus: (tabId: string, status: TabRecord["status"]) => void;
   onWsConnected: (tabId: string, connected: boolean) => void;
 };
 
-export function TerminalPane({ tab, onAppendOutput, onStatus, onWsConnected }: Props) {
+export function TerminalPane({
+  tab,
+  isActive,
+  onTraffic,
+  onCommandChannel,
+  onStatus,
+  onWsConnected
+}: Props) {
   const connectionRef = useRef<ReturnType<typeof connectSessionWebSocket> | null>(null);
+  const connectionGenerationRef = useRef(0);
   const xtermRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const searchRef = useRef<SearchAddon | null>(null);
+  const encoderRef = useRef(new TextEncoder());
+  const isActiveRef = useRef(isActive);
   const hostElRef = useRef<HTMLDivElement | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const [terminalReady, setTerminalReady] = useState(false);
+  const [reconnectToken, setReconnectToken] = useState(0);
   const port = tab.session?.port;
+
+  useEffect(() => {
+    isActiveRef.current = isActive;
+  }, [isActive]);
 
   useEffect(() => {
     if (!hostElRef.current || xtermRef.current) return;
@@ -119,12 +136,7 @@ export function TerminalPane({ tab, onAppendOutput, onStatus, onWsConnected }: P
       }));
 
       fit.fit();
-      term.focus();
-      term.writeln("localterm: session pane initialized");
-      term.writeln("");
-      if (tab.output) {
-        term.write(tab.output);
-      }
+      if (isActive) term.focus();
 
       xtermRef.current = term;
       fitRef.current = fit;
@@ -152,7 +164,10 @@ export function TerminalPane({ tab, onAppendOutput, onStatus, onWsConnected }: P
     })().catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       onStatus(tab.id, "error");
-      onAppendOutput(tab.id, `\n[xterm init error] ${message}\n`);
+      const term = xtermRef.current;
+      if (term) {
+        term.writeln(`\r\n[xterm init error] ${message}`);
+      }
     });
 
     return () => {
@@ -170,7 +185,27 @@ export function TerminalPane({ tab, onAppendOutput, onStatus, onWsConnected }: P
       fitRef.current = null;
       xtermRef.current = null;
     };
-  }, [tab.id, tab.session?.sessionId, onAppendOutput, onStatus]);
+  }, [tab.id, tab.session?.sessionId, onStatus]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    const term = xtermRef.current;
+    const fit = fitRef.current;
+    if (!term || !fit) return;
+    try {
+      fit.fit();
+      term.focus();
+      if (tab.session) {
+        void window.localtermApi.session.resizeSession({
+          sessionId: tab.session.sessionId,
+          cols: term.cols,
+          rows: term.rows
+        });
+      }
+    } catch {
+      // ignore transient layout errors
+    }
+  }, [isActive, tab.session?.sessionId]);
 
   useEffect(() => {
     if (!port) return;
@@ -178,11 +213,17 @@ export function TerminalPane({ tab, onAppendOutput, onStatus, onWsConnected }: P
     const term = xtermRef.current;
     const fit = fitRef.current;
     if (!term || !fit) return;
+    const generation = connectionGenerationRef.current + 1;
+    connectionGenerationRef.current = generation;
+    let closedByEffectCleanup = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
     const conn = connectSessionWebSocket(port, {
       onOpen: () => {
+        if (generation !== connectionGenerationRef.current) return;
         onWsConnected(tab.id, true);
-        term.focus();
+        onCommandChannel(tab.id, (text: string) => conn.sendText(text));
+        if (isActiveRef.current) term.focus();
         try {
           fit.fit();
           void window.localtermApi.session.resizeSession({
@@ -195,10 +236,16 @@ export function TerminalPane({ tab, onAppendOutput, onStatus, onWsConnected }: P
         }
       },
       onOutput: (text) => {
+        if (generation !== connectionGenerationRef.current) return;
         term.write(text);
-        onAppendOutput(tab.id, text);
+        onTraffic(
+          tab.id,
+          encoderRef.current.encode(text).byteLength,
+          text.split("\n").length - 1
+        );
       },
       onControlEvent: (event) => {
+        if (generation !== connectionGenerationRef.current) return;
         if (event.type === "ready") onStatus(tab.id, "ready");
         if (event.type === "exit") {
           term.writeln(`\r\n[session exited] code=${event.exitCode ?? "null"}`);
@@ -209,7 +256,16 @@ export function TerminalPane({ tab, onAppendOutput, onStatus, onWsConnected }: P
           onStatus(tab.id, "error");
         }
       },
-      onClose: () => onWsConnected(tab.id, false)
+      onClose: () => {
+        if (generation !== connectionGenerationRef.current) return;
+        onWsConnected(tab.id, false);
+        onCommandChannel(tab.id, null);
+        if (!closedByEffectCleanup && tab.status !== "exited" && tab.status !== "error") {
+          reconnectTimer = setTimeout(() => {
+            setReconnectToken((x) => x + 1);
+          }, 350);
+        }
+      }
     });
     connectionRef.current = conn;
 
@@ -221,12 +277,28 @@ export function TerminalPane({ tab, onAppendOutput, onStatus, onWsConnected }: P
     });
 
     return () => {
+      closedByEffectCleanup = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
       binaryDisposable.dispose();
       disposable.dispose();
       conn.close();
+      if (generation === connectionGenerationRef.current) {
+        onCommandChannel(tab.id, null);
+      }
       connectionRef.current = null;
     };
-  }, [port, tab.id, tab.session, terminalReady, onAppendOutput, onStatus, onWsConnected]);
+  }, [
+    onCommandChannel,
+    onTraffic,
+    port,
+    tab.id,
+    tab.session?.sessionId,
+    tab.status,
+    terminalReady,
+    reconnectToken,
+    onStatus,
+    onWsConnected
+  ]);
 
   return (
     <div className="grid h-full grid-rows-[auto_1fr] gap-2">
