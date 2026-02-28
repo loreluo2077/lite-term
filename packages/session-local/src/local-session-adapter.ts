@@ -4,8 +4,8 @@
  */
 import os from "node:os";
 import process from "node:process";
-import type { IPty } from "node-pty";
-import * as pty from "node-pty";
+import type { IPty } from "@homebridge/node-pty-prebuilt-multiarch";
+import * as pty from "@homebridge/node-pty-prebuilt-multiarch";
 import { BaseSessionAdapter } from "@localterm/session-core";
 import type { CreateLocalSessionRequest } from "@localterm/shared";
 
@@ -13,7 +13,11 @@ export type LocalSessionAdapterOptions = CreateLocalSessionRequest;
 
 function defaultShell(): string {
   if (process.platform === "win32") {
-    return process.env.COMSPEC || "powershell.exe";
+    // Prefer PowerShell over cmd.exe to match electerm behavior.
+    // On Windows, COMSPEC typically points to cmd.exe, so we explicitly
+    // default to powershell.exe unless COMSPEC already contains powershell.
+    const comspec = process.env.COMSPEC || "";
+    return comspec.toLowerCase().includes("powershell") ? comspec : "powershell.exe";
   }
   return process.env.SHELL || "/bin/bash";
 }

@@ -85,19 +85,32 @@ function initialTabPerfState(): TabPerfState {
 
 function buildStressCommand(durationSec: number, burstPerTick: number, payloadSize: number) {
   const durationMs = durationSec * 1000;
+  // Use String.fromCharCode(34) instead of literal quotes to avoid escaping issues
   const js = [
     `const end=Date.now()+${durationMs};`,
     "let i=0;",
-    `const payload=\"x\".repeat(${payloadSize});`,
+    `const payload=String.fromCharCode(120).repeat(${payloadSize});`, // 'x' = char 120
     "const NL=String.fromCharCode(10);",
+    "const SP=String.fromCharCode(32);",
     "function tick(){",
     "  if(Date.now()>end){process.exit(0);return;}",
-    `  for(let j=0;j<${burstPerTick};j++){process.stdout.write(Date.now()+\" \"+(i++)+\" \"+payload+NL);}`,
+    `  for(let j=0;j<${burstPerTick};j++){process.stdout.write(Date.now()+SP+(i++)+SP+payload+NL);}`,
     "  setTimeout(tick,100);",
     "}",
     "tick();"
   ].join("");
-  return `node -e '${js}'\n`;
+
+  // PowerShell has input line length limits that can truncate long commands
+  // Solution: Avoid quotes entirely by using String.fromCharCode() for all string literals
+  const isWindows = navigator.platform.toLowerCase().includes("win");
+  if (isWindows) {
+    // PowerShell: Wrap in double quotes for safety (no internal quotes now)
+    // Add explicit \r\n (CR+LF) for Windows line ending
+    return `node -e "${js}"\r\n`;
+  } else {
+    // Unix: Use single quotes for safety
+    return `node -e '${js}'\n`;
+  }
 }
 
 function sleep(ms: number) {
@@ -148,6 +161,7 @@ export function App() {
   const createTabInternal = useCallback(async (activate = true) => {
     tabCounterRef.current += 1;
     const tabId = globalThis.crypto?.randomUUID?.() ?? String(Date.now());
+    console.log(`[app] Creating tab ${tabId.slice(0, 8)}, count=${tabCounterRef.current}`);
     const tab: TabRecord = {
       id: tabId,
       title: nextTabTitle(tabCounterRef.current),
@@ -158,11 +172,13 @@ export function App() {
     if (activate) setActiveTabId(tabId);
 
     try {
+      console.log(`[app] Requesting session for tab ${tabId.slice(0, 8)}`);
       const session = (await window.localtermApi.session.createLocalSession({
         sessionType: "local",
         cols: 120,
         rows: 30
       })) as CreateLocalSessionResponse;
+      console.log(`[app] Got session ${session.sessionId.slice(0, 8)} for tab ${tabId.slice(0, 8)}, port=${session.port}`);
       setTabs((prev) =>
         prev.map((t) =>
           t.id === tabId
@@ -366,6 +382,10 @@ export function App() {
         BULK_STRESS_DEFAULTS.burstPerTick,
         BULK_STRESS_DEFAULTS.payloadSize
       );
+      console.log("[bulk-stress] Generated command:", JSON.stringify(command));
+      console.log("[bulk-stress] Command length:", command.length, "chars");
+      console.log("[bulk-stress] Command bytes:", Array.from(command).map(c => c.charCodeAt(0)).slice(-10));
+
       let launched = 0;
       for (const tabId of createdTabIds) {
         if (sendOrQueueCommand(tabId, command)) launched += 1;

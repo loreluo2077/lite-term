@@ -208,16 +208,35 @@ export function TerminalPane({
   }, [isActive, tab.session?.sessionId]);
 
   useEffect(() => {
-    if (!port) return;
-    if (!terminalReady) return;
+    console.log(`[TerminalPane] WS connect effect triggered - tabId=${tab.id.slice(0, 8)}, port=${port}, terminalReady=${terminalReady}, status=${tab.status}, hasTermRef=${!!xtermRef.current}, hasFitRef=${!!fitRef.current}`);
+
+    if (!port) {
+      console.log(`[TerminalPane] Skipping WS connect - no port yet (tabId=${tab.id.slice(0, 8)})`);
+      return;
+    }
+    if (!terminalReady) {
+      console.log(`[TerminalPane] Skipping WS connect - terminal not ready yet (tabId=${tab.id.slice(0, 8)})`);
+      return;
+    }
     const term = xtermRef.current;
     const fit = fitRef.current;
-    if (!term || !fit) return;
+    if (!term || !fit) {
+      console.log(`[TerminalPane] Skipping WS connect - term or fit not available (tabId=${tab.id.slice(0, 8)}), will retry in 100ms`);
+      // Race condition: terminalReady was set but refs not yet assigned
+      // This can happen if React hasn't re-rendered yet or async init is still pending
+      // Schedule a retry by bumping reconnectToken
+      const retryTimer = setTimeout(() => {
+        console.log(`[TerminalPane] Retrying WS connect for tabId=${tab.id.slice(0, 8)}`);
+        setReconnectToken((x) => x + 1);
+      }, 100);
+      return () => clearTimeout(retryTimer);
+    }
     const generation = connectionGenerationRef.current + 1;
     connectionGenerationRef.current = generation;
     let closedByEffectCleanup = false;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
+    console.log(`[TerminalPane] Connecting WebSocket to port ${port} (tabId=${tab.id.slice(0, 8)}, generation=${generation})`);
     const conn = connectSessionWebSocket(port, {
       onOpen: () => {
         if (generation !== connectionGenerationRef.current) return;
@@ -277,6 +296,7 @@ export function TerminalPane({
     });
 
     return () => {
+      console.log(`[TerminalPane] Cleaning up WS connection for tabId=${tab.id.slice(0, 8)}, port=${port}, generation=${generation}`);
       closedByEffectCleanup = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       binaryDisposable.dispose();
@@ -287,17 +307,17 @@ export function TerminalPane({
       }
       connectionRef.current = null;
     };
+    // CRITICAL: Only depend on values that should trigger a NEW connection
+    // Do NOT include callbacks (onCommandChannel, onTraffic, etc.) as they change on every render
+    // causing the effect to re-run and close/reopen the connection unnecessarily
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    onCommandChannel,
-    onTraffic,
     port,
-    tab.id,
-    tab.session?.sessionId,
-    tab.status,
     terminalReady,
     reconnectToken,
-    onStatus,
-    onWsConnected
+    tab.id
+    // Deliberately NOT including: onCommandChannel, onTraffic, onStatus, onWsConnected, tab.session?.sessionId, tab.status
+    // These callbacks/values are used but should NOT trigger reconnection
   ]);
 
   return (

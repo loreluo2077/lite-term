@@ -24,6 +24,7 @@ type RuntimeState = {
   activeSocket: WebSocket | null;
   pendingOutput: Uint8Array[];
   pendingOutputBytes: number;
+  disconnectTimer: NodeJS.Timeout | null;
 };
 
 let runtime: RuntimeState | null = null;
@@ -109,8 +110,33 @@ async function initRuntime(message: unknown) {
   }
   const { sessionId, port, host, request } = parsed.data.payload;
 
+  console.log(`[worker:${sessionId.slice(0, 8)}] Initializing on ${host}:${port}`);
+
   const adapter = new LocalSessionAdapter(request);
   const server = new WebSocketServer({ host, port });
+
+  // Wait for server to actually start listening before continuing.
+  // This prevents race conditions on Windows where the renderer might try to
+  // connect before the server is ready (electerm also waits for server.listen).
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      console.error(`[worker:${sessionId.slice(0, 8)}] TIMEOUT: Server failed to listen on ${host}:${port} within 5s`);
+      reject(new Error(`WebSocket server failed to start on ${host}:${port}`));
+    }, 5000);
+
+    server.once("listening", () => {
+      clearTimeout(timeout);
+      const addr = server.address();
+      console.log(`[worker:${sessionId.slice(0, 8)}] Server listening on`, addr);
+      resolve();
+    });
+
+    server.once("error", (err) => {
+      clearTimeout(timeout);
+      console.error(`[worker:${sessionId.slice(0, 8)}] Server error:`, err);
+      reject(err);
+    });
+  });
 
   runtime = {
     sessionId,
@@ -122,12 +148,20 @@ async function initRuntime(message: unknown) {
     exited: false,
     activeSocket: null,
     pendingOutput: [],
-    pendingOutputBytes: 0
+    pendingOutputBytes: 0,
+    disconnectTimer: null
   };
 
   server.on("connection", (socket) => {
+    console.log(`[worker:${sessionId.slice(0, 8)}] Client connected`);
     runtime!.activeSocket = socket;
     flushPendingOutput();
+
+    // Cancel disconnect timer when client reconnects
+    if (runtime?.disconnectTimer) {
+      clearTimeout(runtime.disconnectTimer);
+      runtime.disconnectTimer = null;
+    }
 
     if (runtime?.ready) {
       sendSocketEvent({
@@ -159,6 +193,16 @@ async function initRuntime(message: unknown) {
     socket.on("close", () => {
       if (runtime?.activeSocket === socket) {
         runtime.activeSocket = null;
+      }
+      // Start a disconnect timer. If no client reconnects within 30 seconds,
+      // assume the tab was closed and kill the session to avoid orphaned processes.
+      // This supports renderer-side reconnect while preventing process leaks.
+      if (runtime && !runtime.exited && !runtime.disconnectTimer) {
+        runtime.disconnectTimer = setTimeout(() => {
+          if (!runtime?.activeSocket) {
+            shutdown(0);
+          }
+        }, 30_000);
       }
     });
   });
@@ -197,6 +241,7 @@ async function initRuntime(message: unknown) {
   await adapter.init();
 
   runtime.ready = true;
+  console.log(`[worker:${sessionId.slice(0, 8)}] Sending ready signal - port=${port}, pid=${process.pid}`);
   sendParent({
     type: "worker:ready",
     payload: {
@@ -253,11 +298,16 @@ function onParentMessage(message: unknown) {
 }
 
 export function bootstrapSessionWorker() {
+  console.log(`[worker] Bootstrap started, PID=${process.pid}`);
+  console.log(`[worker] argv[0]=${process.argv[0]}`);
+  console.log(`[worker] argv[1]=${process.argv[1]}`);
+
   process.on("message", onParentMessage);
   process.on("SIGTERM", () => shutdown(0));
   process.on("SIGINT", () => shutdown(0));
   process.on("uncaughtException", (error) => {
     const err = error instanceof Error ? error : new Error(String(error));
+    console.error(`[worker] Uncaught exception:`, error);
     if (runtime) {
       sendParent({
         type: "worker:error",
@@ -271,6 +321,6 @@ export function bootstrapSessionWorker() {
   });
 }
 
-if (process.argv[1] && process.argv[1].includes("main.ts")) {
-  bootstrapSessionWorker();
-}
+// Unconditionally start bootstrap - this file's sole purpose is to be a worker entry point
+// The conditional check (process.argv[1].includes("main.ts")) was failing with tsx
+bootstrapSessionWorker();

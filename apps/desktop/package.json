@@ -9,8 +9,11 @@
     "@localterm/shared": "workspace:*"
   },
   "scripts": {
-    "dev": "NODE_OPTIONS='--import=tsx' LOCALTERM_RENDERER_URL=http://127.0.0.1:5173 electron ./src/main/index.ts",
+    "dev": "cross-env NODE_OPTIONS=--import=tsx LOCALTERM_RENDERER_URL=http://127.0.0.1:5173 electron ./src/main/index.ts",
     "build": "echo \"TODO: desktop build\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3"
   }
 }

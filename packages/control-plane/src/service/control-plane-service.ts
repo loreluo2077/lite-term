@@ -39,6 +39,8 @@ export class ControlPlaneService {
     const sessionId = randomUUID();
     const port = await this.ports.allocate(DEFAULTS.workerHost);
 
+    console.log(`[control-plane] Creating session ${sessionId.slice(0, 8)} on port ${port}`);
+
     this.registry.set({
       sessionId,
       pid: -1,
@@ -55,6 +57,8 @@ export class ControlPlaneService {
         request
       });
 
+      console.log(`[control-plane] Session ${sessionId.slice(0, 8)} ready - pid=${ready.pid}, port=${port}`);
+
       this.registry.set({
         sessionId,
         pid: ready.pid || worker.child.pid || -1,
@@ -64,6 +68,8 @@ export class ControlPlaneService {
       this.syncSnapshot();
 
       worker.child.on("exit", () => {
+        console.log(`[control-plane] Session ${sessionId.slice(0, 8)} exited - releasing port ${port}`);
+        this.ports.release(port);
         this.registry.update(sessionId, { status: "exited" });
         this.syncSnapshot();
       });

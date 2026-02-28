@@ -36,6 +36,10 @@ export class WorkerProcessManager {
     ready: { pid: number; port: number };
   }> {
     const entry = this.resolveWorkerEntry();
+    console.log(`[worker-mgr] Spawning worker for session ${input.sessionId.slice(0, 8)}`);
+    console.log(`[worker-mgr] Entry: ${entry}`);
+    console.log(`[worker-mgr] Command: ${process.execPath} --import tsx ${entry}`);
+
     const child = spawn(process.execPath, ["--import", "tsx", entry], {
       stdio: ["ignore", "pipe", "pipe", "ipc"],
       env: {
@@ -47,6 +51,8 @@ export class WorkerProcessManager {
       }
     });
 
+    console.log(`[worker-mgr] Spawned with PID: ${child.pid}`);
+
     if (!child.pid) {
       throw new Error("Failed to spawn session worker");
     }
@@ -57,6 +63,26 @@ export class WorkerProcessManager {
       port: input.port
     };
     this.workers.set(input.sessionId, worker);
+
+    // Forward worker stdout/stderr to parent console for debugging
+    // Prefix with session ID to identify which worker is logging
+    const sessionPrefix = `[worker:${input.sessionId.slice(0, 8)}]`;
+    if (child.stdout) {
+      child.stdout.on("data", (data) => {
+        const lines = data.toString().trim().split("\n");
+        lines.forEach((line: string) => {
+          if (line) console.log(`${sessionPrefix} ${line}`);
+        });
+      });
+    }
+    if (child.stderr) {
+      child.stderr.on("data", (data) => {
+        const lines = data.toString().trim().split("\n");
+        lines.forEach((line: string) => {
+          if (line) console.error(`${sessionPrefix} ${line}`);
+        });
+      });
+    }
 
     const ready = await new Promise<{ pid: number; port: number }>((resolve, reject) => {
       const timer = setTimeout(() => {
