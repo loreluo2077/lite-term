@@ -23,6 +23,7 @@
   },
   "scripts": {
     "dev": "concurrently -k -n renderer,desktop -c cyan,green \"pnpm --filter @localterm/renderer dev\" \"pnpm --filter @localterm/desktop dev\"",
+    "restart:dev": "bash scripts/restart-port.sh 5173 pnpm dev",
     "typecheck": "pnpm -r --if-present typecheck",
     "lint": "echo \"TODO: wire workspace lint\"",
     "test": "pnpm test:integration",

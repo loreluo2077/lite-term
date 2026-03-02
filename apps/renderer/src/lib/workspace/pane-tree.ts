@@ -99,10 +99,11 @@ function closePaneWalk(node: PaneNode, paneId: string): CloseWalkResult {
 }
 
 export function createDefaultWorkspaceLayout(now = Date.now()): WorkspaceLayout {
+  const workspaceId = `workspace-${now.toString(36)}`;
   return {
     schemaVersion: 2,
-    id: "default",
-    name: "Default Workspace",
+    id: workspaceId,
+    name: "Workspace",
     activePaneId: "pane-1",
     createdAt: now,
     updatedAt: now,

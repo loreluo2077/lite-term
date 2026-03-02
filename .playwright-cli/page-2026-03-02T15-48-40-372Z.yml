@@ -1,0 +1,14 @@
+- generic [ref=e3]:
+  - generic [ref=e4]: "[plugin:vite:import-analysis] Failed to resolve import \"react-resizable-panels\" from \"src/app/App.tsx\". Does the file exist?"
+  - generic [ref=e5]: /Users/a1/Documents/ai/war-room/localterm/apps/renderer/src/app/App.tsx:59:7
+  - generic [ref=e6]: "60 | Group, 61 | Separator 62 | } from \"react-resizable-panels\"; | ^ 63 | const BULK_STRESS_DEFAULTS = { 64 | sessions: 4,"
+  - generic [ref=e7]: at TransformPluginContext._formatError (file:///Users/a1/Documents/ai/war-room/localterm/node_modules/.pnpm/vite@5.4.21_@types+node@22.19.13_lightningcss@1.31.1/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41) at TransformPluginContext.error (file:///Users/a1/Documents/ai/war-room/localterm/node_modules/.pnpm/vite@5.4.21_@types+node@22.19.13_lightningcss@1.31.1/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16) at normalizeUrl (file:///Users/a1/Documents/ai/war-room/localterm/node_modules/.pnpm/vite@5.4.21_@types+node@22.19.13_lightningcss@1.31.1/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23) at process.processTicksAndRejections (node:internal/process/task_queues:105:5) at async file:///Users/a1/Documents/ai/war-room/localterm/node_modules/.pnpm/vite@5.4.21_@types+node@22.19.13_lightningcss@1.31.1/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39 at async Promise.all (index 15) at async TransformPluginContext.transform (file:///Users/a1/Documents/ai/war-room/localterm/node_modules/.pnpm/vite@5.4.21_@types+node@22.19.13_lightningcss@1.31.1/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7) at async PluginContainer.transform (file:///Users/a1/Documents/ai/war-room/localterm/node_modules/.pnpm/vite@5.4.21_@types+node@22.19.13_lightningcss@1.31.1/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18) at async loadAndTransform (file:///Users/a1/Documents/ai/war-room/localterm/node_modules/.pnpm/vite@5.4.21_@types+node@22.19.13_lightningcss@1.31.1/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27) at async viteTransformMiddleware (file:///Users/a1/Documents/ai/war-room/localterm/node_modules/.pnpm/vite@5.4.21_@types+node@22.19.13_lightningcss@1.31.1/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24
+  - generic [ref=e8]:
+    - text: Click outside, press Esc key, or fix the code to dismiss.
+    - text: You can also disable this overlay by setting
+    - code [ref=e9]: server.hmr.overlay
+    - text: to
+    - code [ref=e10]: "false"
+    - text: in
+    - code [ref=e11]: vite.config.ts
+    - text: .

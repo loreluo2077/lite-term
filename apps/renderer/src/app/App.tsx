@@ -369,6 +369,14 @@ export function App() {
     () => new Map(workspaceList.workspaces.map((entry) => [entry.id, entry])),
     [workspaceList]
   );
+  const openWorkspaceEntries = useMemo(
+    () => workspaceList.workspaces.filter((entry) => !entry.isClosed),
+    [workspaceList]
+  );
+  const closedWorkspaceEntries = useMemo(
+    () => workspaceList.workspaces.filter((entry) => entry.isClosed),
+    [workspaceList]
+  );
   const persistedTabsDigest = useMemo(
     () => JSON.stringify(toPersistedTabDescriptors(tabs)),
     [tabs]
@@ -729,6 +737,11 @@ export function App() {
     await refreshWorkspaceList();
   }, [buildWorkspaceSnapshot, refreshWorkspaceList]);
 
+  const canPersistCurrentWorkspace = useCallback(() => {
+    const entry = workspaceById.get(workspace.id);
+    return Boolean(entry && !entry.isClosed);
+  }, [workspace.id, workspaceById]);
+
   const saveWorkspaceAsNew = useCallback(async () => {
     const nextName = saveAsName.trim();
     if (!nextName) return;
@@ -750,7 +763,9 @@ export function App() {
     if (workspaceId === workspace.id) return;
     setWorkspaceActionBusy(true);
     try {
-      await saveWorkspaceNow();
+      if (canPersistCurrentWorkspace()) {
+        await saveWorkspaceNow();
+      }
       const snapshot = await window.localtermApi.workspace.load({ id: workspaceId });
       // Hot switch: don't kill existing sessions, just change layout
       await restoreWorkspaceSnapshot(snapshot, { killExisting: false, coldBoot: false });
@@ -758,42 +773,50 @@ export function App() {
     } finally {
       setWorkspaceActionBusy(false);
     }
-  }, [refreshWorkspaceList, restoreWorkspaceSnapshot, saveWorkspaceNow, workspace.id, workspaceBootstrapped]);
+  }, [
+    canPersistCurrentWorkspace,
+    refreshWorkspaceList,
+    restoreWorkspaceSnapshot,
+    saveWorkspaceNow,
+    workspace.id,
+    workspaceBootstrapped
+  ]);
 
   const createEmptyWorkspace = useCallback(async () => {
     const now = Date.now();
     const id = `workspace-${now.toString(36)}`;
     const name = `Workspace ${workspaceList.workspaces.length + 1}`;
+    const nextSnapshot: WorkspaceSnapshot = {
+      layout: {
+        ...createDefaultWorkspaceLayout(now),
+        id,
+        name
+      },
+      tabs: []
+    };
     setWorkspaceActionBusy(true);
     try {
       // Save current state before creating new workspace
-      await saveWorkspaceNow();
+      if (canPersistCurrentWorkspace()) {
+        await saveWorkspaceNow();
+      }
 
       // Create and switch to the new workspace
-      await restoreWorkspaceSnapshot(
-        {
-          layout: {
-            ...createDefaultWorkspaceLayout(now),
-            id,
-            name
-          },
-          tabs: []
-        },
-        { killExisting: false, coldBoot: false }
-      );
+      await restoreWorkspaceSnapshot(nextSnapshot, { killExisting: false, coldBoot: false });
 
-      // Save the new workspace to storage
-      await saveWorkspaceNow();
-
-      // Refresh the workspace list and force UI update to show the new workspace
+      // Persist the newly created workspace using its explicit snapshot (avoid stale state saves).
+      await window.localtermApi.workspace.save(nextSnapshot);
       await refreshWorkspaceList();
-
-      // Trigger a state update to force re-render of the workspace list
-      setWorkspaceList(prev => ({...prev}));
     } finally {
       setWorkspaceActionBusy(false);
     }
-  }, [refreshWorkspaceList, restoreWorkspaceSnapshot, saveWorkspaceNow, setWorkspaceList, workspaceList.workspaces.length]);
+  }, [
+    canPersistCurrentWorkspace,
+    refreshWorkspaceList,
+    restoreWorkspaceSnapshot,
+    saveWorkspaceNow,
+    workspaceList.workspaces.length
+  ]);
 
   const renameWorkspace = useCallback(async () => {
     if (!workspaceRenameTargetId) return;
@@ -832,35 +855,45 @@ export function App() {
   const closeWorkspaceById = useCallback(async (workspaceId: string) => {
     setWorkspaceActionBusy(true);
     try {
-      await window.localtermApi.workspace.delete({ id: workspaceId });
+      if (workspaceId === workspace.id && canPersistCurrentWorkspace()) {
+        await saveWorkspaceNow();
+      }
+
+      // Soft close: keep snapshot and metadata, hide from active sidebar list.
+      await window.localtermApi.workspace.close({ id: workspaceId });
       const listed = await refreshWorkspaceList();
       if (workspaceId !== workspace.id) {
         return;
       }
-      const nextId = listed.workspaces[0]?.id;
+
+      const nextId = listed.workspaces.find((entry) => !entry.isClosed)?.id;
       if (nextId) {
         const snapshot = await window.localtermApi.workspace.load({ id: nextId });
         // Switching to another workspace = hot switch (keep existing sessions)
         await restoreWorkspaceSnapshot(snapshot, { killExisting: false, coldBoot: false });
+        await refreshWorkspaceList();
         return;
       }
+
+      // No active workspace left: switch to a transient workspace without persisting it.
       const now = Date.now();
       const fresh: WorkspaceSnapshot = {
-        layout: {
-          ...createDefaultWorkspaceLayout(now),
-          id: `workspace-${now.toString(36)}`,
-          name: "Workspace 1"
-        },
+        layout: createDefaultWorkspaceLayout(now),
         tabs: []
       };
-      await window.localtermApi.workspace.save(fresh);
-      // Creating new workspace = hot switch (keep existing sessions)
-      await restoreWorkspaceSnapshot(fresh, { killExisting: false, coldBoot: false });
-      await refreshWorkspaceList();
+
+      // Closing the last workspace should clear active runtime tabs.
+      await restoreWorkspaceSnapshot(fresh, { killExisting: true, coldBoot: true });
     } finally {
       setWorkspaceActionBusy(false);
     }
-  }, [refreshWorkspaceList, restoreWorkspaceSnapshot, workspace.id]);
+  }, [
+    canPersistCurrentWorkspace,
+    refreshWorkspaceList,
+    restoreWorkspaceSnapshot,
+    saveWorkspaceNow,
+    workspace.id
+  ]);
 
   const commitTabRename = useCallback(() => {
     const nextTitle = renamingTitle.trim();
@@ -976,6 +1009,8 @@ export function App() {
     if (!workspaceBootstrapped) return;
     if (workspaceActionBusy) return;
     if (restoringWorkspaceRef.current) return;
+    const currentWorkspaceMeta = workspaceById.get(workspace.id);
+    if (!currentWorkspaceMeta || currentWorkspaceMeta.isClosed) return;
     const timer = setTimeout(() => {
       const snapshot = buildWorkspaceSnapshot();
       void window.localtermApi.workspace.save(snapshot).catch((error) => {
@@ -986,7 +1021,15 @@ export function App() {
     return () => {
       clearTimeout(timer);
     };
-  }, [buildWorkspaceSnapshot, persistedTabsDigest, workspace, workspaceActionBusy, workspaceBootstrapped]);
+  }, [
+    buildWorkspaceSnapshot,
+    persistedTabsDigest,
+    workspace,
+    workspace.id,
+    workspaceActionBusy,
+    workspaceBootstrapped,
+    workspaceById
+  ]);
 
   useEffect(() => {
     const validIds = new Set(tabs.map((tab) => tab.id));
@@ -1601,7 +1644,7 @@ export function App() {
         </div>
         <div className="h-px w-10 bg-zinc-700" />
         <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto">
-          {workspaceList.workspaces.map((entry) => {
+          {openWorkspaceEntries.map((entry) => {
             const active = entry.id === workspace.id;
             return (
               <button
@@ -1755,13 +1798,12 @@ export function App() {
               setWorkspaceContextMenu(null);
               void (async () => {
                 if (targetId === workspace.id) {
-                  await saveWorkspaceNow();
+                  if (canPersistCurrentWorkspace()) {
+                    await saveWorkspaceNow();
+                  }
                   return;
                 }
-                // Switch to the selected workspace (hot switch to preserve sessions)
-                const snapshot = await window.localtermApi.workspace.load({ id: targetId });
-                await restoreWorkspaceSnapshot(snapshot, { killExisting: false, coldBoot: false });
-                await refreshWorkspaceList();
+                await switchWorkspace(targetId);
               })();
             }}
           >
@@ -1828,10 +1870,10 @@ export function App() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Open Workspace</DialogTitle>
-            <DialogDescription>Choose a saved workspace to switch to.</DialogDescription>
+            <DialogDescription>Choose from saved and history workspaces.</DialogDescription>
           </DialogHeader>
           <div className="max-h-[50vh] space-y-2 overflow-auto">
-            {workspaceList.workspaces.map((entry) => (
+            {[...closedWorkspaceEntries, ...openWorkspaceEntries].map((entry) => (
               <button
                 key={entry.id}
                 type="button"
@@ -1841,8 +1883,10 @@ export function App() {
                   void switchWorkspace(entry.id);
                 }}
               >
-                <span>{entry.name}</span>
-                <span className="text-xs text-zinc-400">{entry.id}</span>
+                <span className="truncate">{entry.name}</span>
+                <span className="text-xs text-zinc-400">
+                  {entry.isClosed ? "History" : "Open"} · {entry.id}
+                </span>
               </button>
             ))}
           </div>

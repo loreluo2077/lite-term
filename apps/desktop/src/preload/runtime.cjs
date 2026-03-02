@@ -14,6 +14,7 @@ const api = {
     save: (payload) => ipcRenderer.invoke("workspace:save", payload),
     load: (payload) => ipcRenderer.invoke("workspace:load", payload),
     list: () => ipcRenderer.invoke("workspace:list"),
+    close: (payload) => ipcRenderer.invoke("workspace:close", payload),
     delete: (payload) => ipcRenderer.invoke("workspace:delete", payload),
     getDefault: () => ipcRenderer.invoke("workspace:getDefault")
   },

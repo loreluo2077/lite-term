@@ -5,6 +5,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import type { WorkspaceSnapshot } from "@localterm/shared";
 import {
+  closeWorkspaceSnapshot,
   deleteWorkspaceSnapshot,
   getDefaultWorkspaceSnapshot,
   listWorkspaces,
@@ -100,9 +101,19 @@ test("workspace storage: save/load/list/delete/default", async () => {
     assert.equal(loaded.layout.id, "dev");
     assert.equal(loaded.tabs[0].id, "tab-2");
 
+    await closeWorkspaceSnapshot(tempRoot, "dev");
+    const listedAfterClose = await listWorkspaces(tempRoot);
+    const closedDev = listedAfterClose.workspaces.find((w) => w.id === "dev");
+    assert.equal(closedDev?.isClosed, true);
+
     const defaultWorkspace = await getDefaultWorkspaceSnapshot(tempRoot);
-    // With default workspace functionality removed, this returns the first workspace in the list
     assert.ok(defaultWorkspace.workspace);
+    assert.equal(defaultWorkspace.workspace?.layout.id, "default");
+
+    await loadWorkspaceSnapshot(tempRoot, "dev");
+    const listedAfterReopen = await listWorkspaces(tempRoot);
+    const reopenedDev = listedAfterReopen.workspaces.find((w) => w.id === "dev");
+    assert.equal(reopenedDev?.isClosed, false);
 
     await deleteWorkspaceSnapshot(tempRoot, "default");
     const listedAfterDelete = await listWorkspaces(tempRoot);

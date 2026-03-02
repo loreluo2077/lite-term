@@ -6,6 +6,7 @@ import {
   workspaceSnapshotSchema
 } from "@localterm/shared";
 import {
+  closeWorkspaceSnapshot,
   deleteWorkspaceSnapshot,
   getDefaultWorkspaceSnapshot,
   listWorkspaces,
@@ -31,6 +32,11 @@ export function registerWorkspaceIpcHandlers() {
   ipcMain.handle(IPC_CHANNELS.workspaceList, async () => {
     const listed = await listWorkspaces(getUserDataDir());
     return workspaceListResponseSchema.parse(listed);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.workspaceClose, async (_event, payload) => {
+    const { id } = workspaceIdRequestSchema.parse(payload);
+    return await closeWorkspaceSnapshot(getUserDataDir(), id);
   });
 
   ipcMain.handle(IPC_CHANNELS.workspaceDelete, async (_event, payload) => {

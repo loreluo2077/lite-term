@@ -38,6 +38,7 @@ const api = {
     save: (payload: WorkspaceSnapshot) => ipcRenderer.invoke(IPC_CHANNELS.workspaceSave, payload),
     load: (payload: WorkspaceIdRequest) => ipcRenderer.invoke(IPC_CHANNELS.workspaceLoad, payload) as Promise<WorkspaceSnapshot>,
     list: () => ipcRenderer.invoke(IPC_CHANNELS.workspaceList) as Promise<WorkspaceListResponse>,
+    close: (payload: WorkspaceIdRequest) => ipcRenderer.invoke(IPC_CHANNELS.workspaceClose, payload),
     delete: (payload: WorkspaceIdRequest) => ipcRenderer.invoke(IPC_CHANNELS.workspaceDelete, payload),
     getDefault: () => ipcRenderer.invoke(IPC_CHANNELS.workspaceGetDefault) as Promise<WorkspaceGetDefaultResponse>
   },

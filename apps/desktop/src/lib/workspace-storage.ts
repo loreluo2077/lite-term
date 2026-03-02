@@ -89,7 +89,7 @@ export async function saveWorkspaceSnapshot(userDataDir: string, payload: Worksp
     // Update existing workspace in place (preserve order)
     nextWorkspaces = current.workspaces.map((entry) =>
       entry.id === snapshot.layout.id
-        ? { ...entry, name: snapshot.layout.name, lastAccessed: now }
+        ? { ...entry, name: snapshot.layout.name, lastAccessed: now, isClosed: false }
         : entry
     );
   } else {
@@ -99,7 +99,8 @@ export async function saveWorkspaceSnapshot(userDataDir: string, payload: Worksp
       {
         id: snapshot.layout.id,
         name: snapshot.layout.name,
-        lastAccessed: now
+        lastAccessed: now,
+        isClosed: false
       }
     ];
   }
@@ -118,7 +119,9 @@ export async function loadWorkspaceSnapshot(userDataDir: string, workspaceId: st
   const index = await readIndex(userDataDir);
   const updated = {
     workspaces: index.workspaces.map((entry) =>
-      entry.id === workspaceId ? { ...entry, lastAccessed: Date.now(), name: parsed.layout.name } : entry
+      entry.id === workspaceId
+        ? { ...entry, lastAccessed: Date.now(), name: parsed.layout.name, isClosed: false }
+        : entry
     )
   };
   await writeIndex(userDataDir, updated);
@@ -127,6 +130,17 @@ export async function loadWorkspaceSnapshot(userDataDir: string, workspaceId: st
 
 export async function listWorkspaces(userDataDir: string) {
   return await readIndex(userDataDir);
+}
+
+export async function closeWorkspaceSnapshot(userDataDir: string, workspaceId: string) {
+  const current = await readIndex(userDataDir);
+  const nextWorkspaces = current.workspaces.map((entry) =>
+    entry.id === workspaceId ? { ...entry, isClosed: true } : entry
+  );
+  await writeIndex(userDataDir, {
+    workspaces: nextWorkspaces
+  });
+  return { ok: true } as const;
 }
 
 export async function deleteWorkspaceSnapshot(userDataDir: string, workspaceId: string) {
@@ -143,18 +157,19 @@ export async function deleteWorkspaceSnapshot(userDataDir: string, workspaceId: 
 
 export async function getDefaultWorkspaceSnapshot(userDataDir: string): Promise<WorkspaceGetDefaultResponse> {
   const index = await readIndex(userDataDir);
-  if (index.workspaces.length === 0) {
+  const openWorkspaces = index.workspaces.filter((entry) => !entry.isClosed);
+  if (openWorkspaces.length === 0) {
     return workspaceGetDefaultResponseSchema.parse({ workspace: null });
   }
-  // Return the first workspace as a fallback
-  const firstWorkspaceId = index.workspaces[0]?.id;
-  if (!firstWorkspaceId) {
-    return workspaceGetDefaultResponseSchema.parse({ workspace: null });
+
+  // Return the first open workspace that can be loaded.
+  for (const entry of openWorkspaces) {
+    try {
+      const workspace = await loadWorkspaceSnapshot(userDataDir, entry.id);
+      return workspaceGetDefaultResponseSchema.parse({ workspace });
+    } catch {
+      // try next workspace
+    }
   }
-  try {
-    const workspace = await loadWorkspaceSnapshot(userDataDir, firstWorkspaceId);
-    return workspaceGetDefaultResponseSchema.parse({ workspace });
-  } catch {
-    return workspaceGetDefaultResponseSchema.parse({ workspace: null });
-  }
+  return workspaceGetDefaultResponseSchema.parse({ workspace: null });
 }

@@ -85,7 +85,8 @@ export const workspaceSnapshotSchema = z.object({
 export const workspaceMetaSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
-  lastAccessed: z.number().int().nonnegative()
+  lastAccessed: z.number().int().nonnegative(),
+  isClosed: z.boolean().default(false)
 });
 
 export const workspaceIndexSchema = z.object({

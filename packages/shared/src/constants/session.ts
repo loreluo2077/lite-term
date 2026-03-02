@@ -18,6 +18,7 @@ export const IPC_CHANNELS = {
   workspaceSave: "workspace:save",
   workspaceLoad: "workspace:load",
   workspaceList: "workspace:list",
+  workspaceClose: "workspace:close",
   workspaceDelete: "workspace:delete",
   workspaceGetDefault: "workspace:getDefault",
   filePickDirectory: "file:pickDirectory",

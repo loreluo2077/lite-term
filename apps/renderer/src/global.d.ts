@@ -35,6 +35,7 @@ declare global {
         save(payload: WorkspaceSnapshot): Promise<OkResponse>;
         load(payload: WorkspaceIdRequest): Promise<WorkspaceSnapshot>;
         list(): Promise<WorkspaceListResponse>;
+        close(payload: WorkspaceIdRequest): Promise<OkResponse>;
         delete(payload: WorkspaceIdRequest): Promise<OkResponse>;
         getDefault(): Promise<WorkspaceGetDefaultResponse>;
       };
