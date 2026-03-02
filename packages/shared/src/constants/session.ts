@@ -14,7 +14,16 @@ export const IPC_CHANNELS = {
   sessionResize: "session:resize",
   sessionKill: "session:kill",
   sessionList: "session:list",
-  systemMetrics: "system:getMetrics"
+  systemMetrics: "system:getMetrics",
+  workspaceSave: "workspace:save",
+  workspaceLoad: "workspace:load",
+  workspaceList: "workspace:list",
+  workspaceDelete: "workspace:delete",
+  workspaceGetDefault: "workspace:getDefault",
+  filePickDirectory: "file:pickDirectory",
+  filePickFile: "file:pickFile",
+  fileReadDir: "file:readDir",
+  fileReadFile: "file:readFile"
 } as const;
 
 export const DEFAULTS = {

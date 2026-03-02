@@ -9,6 +9,19 @@ const api = {
   },
   system: {
     getMetrics: () => ipcRenderer.invoke("system:getMetrics")
+  },
+  workspace: {
+    save: (payload) => ipcRenderer.invoke("workspace:save", payload),
+    load: (payload) => ipcRenderer.invoke("workspace:load", payload),
+    list: () => ipcRenderer.invoke("workspace:list"),
+    delete: (payload) => ipcRenderer.invoke("workspace:delete", payload),
+    getDefault: () => ipcRenderer.invoke("workspace:getDefault")
+  },
+  file: {
+    pickDirectory: () => ipcRenderer.invoke("file:pickDirectory"),
+    pickFile: (payload) => ipcRenderer.invoke("file:pickFile", payload ?? {}),
+    readDir: (payload) => ipcRenderer.invoke("file:readDir", payload),
+    readFile: (payload) => ipcRenderer.invoke("file:readFile", payload)
   }
 };
 

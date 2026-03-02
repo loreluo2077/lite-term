@@ -7,7 +7,18 @@ import {
   type SystemMetricsResponse,
   type CreateLocalSessionRequest,
   type KillSessionRequest,
-  type ResizeSessionRequest
+  type ResizeSessionRequest,
+  type WorkspaceIdRequest,
+  type WorkspaceGetDefaultResponse,
+  type WorkspaceListResponse,
+  type WorkspaceSnapshot,
+  type FsPickDirectoryResponse,
+  type FsPickFileRequest,
+  type FsPickFileResponse,
+  type FsReadDirRequest,
+  type FsReadDirResponse,
+  type FsReadFileRequest,
+  type FsReadFileResponse
 } from "@localterm/shared";
 
 const api = {
@@ -22,6 +33,22 @@ const api = {
   },
   system: {
     getMetrics: () => ipcRenderer.invoke(IPC_CHANNELS.systemMetrics) as Promise<SystemMetricsResponse>
+  },
+  workspace: {
+    save: (payload: WorkspaceSnapshot) => ipcRenderer.invoke(IPC_CHANNELS.workspaceSave, payload),
+    load: (payload: WorkspaceIdRequest) => ipcRenderer.invoke(IPC_CHANNELS.workspaceLoad, payload) as Promise<WorkspaceSnapshot>,
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.workspaceList) as Promise<WorkspaceListResponse>,
+    delete: (payload: WorkspaceIdRequest) => ipcRenderer.invoke(IPC_CHANNELS.workspaceDelete, payload),
+    getDefault: () => ipcRenderer.invoke(IPC_CHANNELS.workspaceGetDefault) as Promise<WorkspaceGetDefaultResponse>
+  },
+  file: {
+    pickDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.filePickDirectory) as Promise<FsPickDirectoryResponse>,
+    pickFile: (payload?: FsPickFileRequest) =>
+      ipcRenderer.invoke(IPC_CHANNELS.filePickFile, payload ?? {}) as Promise<FsPickFileResponse>,
+    readDir: (payload: FsReadDirRequest) =>
+      ipcRenderer.invoke(IPC_CHANNELS.fileReadDir, payload) as Promise<FsReadDirResponse>,
+    readFile: (payload: FsReadFileRequest) =>
+      ipcRenderer.invoke(IPC_CHANNELS.fileReadFile, payload) as Promise<FsReadFileResponse>
   }
 };
 

@@ -2,13 +2,15 @@
  * Jotai atoms for tab/session metadata and lifecycle state.
  */
 import { atom } from "jotai";
-import type { CreateLocalSessionResponse } from "@localterm/shared";
+import type { CreateLocalSessionResponse, SessionStatus, TabKind } from "@localterm/shared";
 
 export type TabRecord = {
   id: string;
+  tabKind: TabKind;
   title: string;
-  session?: CreateLocalSessionResponse;
-  status: "idle" | "starting" | "ready" | "exited" | "error";
+  input: Record<string, unknown>;
+  session?: CreateLocalSessionResponse | undefined;
+  status: "idle" | SessionStatus;
   wsConnected: boolean;
 };
 

@@ -24,7 +24,6 @@ type RuntimeState = {
   activeSocket: WebSocket | null;
   pendingOutput: Uint8Array[];
   pendingOutputBytes: number;
-  disconnectTimer: NodeJS.Timeout | null;
 };
 
 let runtime: RuntimeState | null = null;
@@ -148,20 +147,14 @@ async function initRuntime(message: unknown) {
     exited: false,
     activeSocket: null,
     pendingOutput: [],
-    pendingOutputBytes: 0,
-    disconnectTimer: null
+    pendingOutputBytes: 0
   };
 
   server.on("connection", (socket) => {
-    console.log(`[worker:${sessionId.slice(0, 8)}] Client connected`);
+    const isReconnect = runtime!.activeSocket !== null;
+    console.log(`[worker:${sessionId.slice(0, 8)}] Client ${isReconnect ? 'reconnected' : 'connected'}`);
     runtime!.activeSocket = socket;
     flushPendingOutput();
-
-    // Cancel disconnect timer when client reconnects
-    if (runtime?.disconnectTimer) {
-      clearTimeout(runtime.disconnectTimer);
-      runtime.disconnectTimer = null;
-    }
 
     if (runtime?.ready) {
       sendSocketEvent({
@@ -191,19 +184,14 @@ async function initRuntime(message: unknown) {
     });
 
     socket.on("close", () => {
+      console.log(`[worker:${sessionId.slice(0, 8)}] Client disconnected`);
       if (runtime?.activeSocket === socket) {
         runtime.activeSocket = null;
       }
-      // Start a disconnect timer. If no client reconnects within 30 seconds,
-      // assume the tab was closed and kill the session to avoid orphaned processes.
-      // This supports renderer-side reconnect while preventing process leaks.
-      if (runtime && !runtime.exited && !runtime.disconnectTimer) {
-        runtime.disconnectTimer = setTimeout(() => {
-          if (!runtime?.activeSocket) {
-            shutdown(0);
-          }
-        }, 30_000);
-      }
+      // No auto-shutdown on disconnect - session stays alive indefinitely like VSCode.
+      // Only shutdown when explicitly killed via worker:kill message or process exit.
+      // This allows users to switch workspaces or disconnect for long periods and
+      // return to their sessions later without any data loss.
     });
   });
 
