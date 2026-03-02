@@ -741,6 +741,10 @@ export function App() {
     const entry = workspaceById.get(workspace.id);
     return Boolean(entry && !entry.isClosed);
   }, [workspace.id, workspaceById]);
+  const hasActiveWorkspace = useMemo(
+    () => openWorkspaceEntries.some((entry) => entry.id === workspace.id),
+    [openWorkspaceEntries, workspace.id]
+  );
 
   const saveWorkspaceAsNew = useCallback(async () => {
     const nextName = saveAsName.trim();
@@ -1714,9 +1718,11 @@ export function App() {
                 type="button"
                 className="w-full rounded px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
                 onClick={() => {
+                  if (!hasActiveWorkspace) return;
                   setSettingsMenuOpen(false);
                   setSaveAsOpen(true);
                 }}
+                disabled={!hasActiveWorkspace}
               >
                 Save As
               </button>
@@ -1725,8 +1731,17 @@ export function App() {
         </div>
       </aside>
 
-      <main className="min-h-0 rounded-xl border border-zinc-800 bg-zinc-900/40 p-2">
-        {renderPaneNode(workspace.root)}
+      <main className={hasActiveWorkspace ? "min-h-0 rounded-xl border border-zinc-800 bg-zinc-900/40 p-2" : "min-h-0 p-2"}>
+        {hasActiveWorkspace ? (
+          renderPaneNode(workspace.root)
+        ) : (
+          <div className="grid h-full min-h-0 place-items-center text-zinc-500">
+            <div className="space-y-2 text-center">
+              <div className="text-sm text-zinc-300">No active workspace</div>
+              <div className="text-xs">Create a new workspace or open one from history.</div>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Hidden container for orphan tabs from other workspaces - keeps WebSocket connections alive */}
