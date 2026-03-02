@@ -1,6 +1,7 @@
 import { atom } from "jotai";
 import type {
   PaneDirection,
+  PaneNode,
   TabDescriptor,
   WorkspaceLayout
 } from "@localterm/shared";
@@ -151,6 +152,37 @@ export const activateTabInPaneAtom = atom(
       ...current,
       root,
       activePaneId: payload.paneId,
+      updatedAt: Date.now()
+    });
+  }
+);
+
+// Atom to update panel sizes when user resizes them
+export const updatePanelSizesAtom = atom(
+  null,
+  (get, set, payload: { paneId: string; sizes: [number, number] }) => {
+    const current = get(currentWorkspaceAtom);
+
+    const updateSizes = (node: PaneNode): PaneNode => {
+      if (node.type === "split") {
+        if (node.id === payload.paneId) {
+          return {
+            ...node,
+            sizes: payload.sizes
+          };
+        }
+        return {
+          ...node,
+          children: [updateSizes(node.children[0]), updateSizes(node.children[1])]
+        };
+      }
+      return node;
+    };
+
+    const root = updateSizes(current.root);
+    set(currentWorkspaceAtom, {
+      ...current,
+      root,
       updatedAt: Date.now()
     });
   }

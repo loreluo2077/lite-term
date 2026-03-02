@@ -34,5 +34,8 @@
     "debug:sessions": "tsx scripts/debug-sessions.ts",
     "kill:orphans": "tsx scripts/kill-orphans.ts",
     "perf:stress": "tsx scripts/perf-session-stress.ts"
+  },
+  "dependencies": {
+    "react-resizable-panels": "^4.7.0"
   }
 }

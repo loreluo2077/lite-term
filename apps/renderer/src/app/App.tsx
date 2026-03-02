@@ -38,7 +38,8 @@ import {
   moveTabAtom,
   removeTabFromPaneAtom,
   setActivePaneAtom,
-  splitPaneAtom
+  splitPaneAtom,
+  updatePanelSizesAtom
 } from "../lib/atoms/workspace";
 import {
   createDefaultWorkspaceLayout,
@@ -51,6 +52,11 @@ import {
   makePluginViewInput,
   type OpenPluginViewRequest
 } from "../lib/plugins";
+import {
+  Panel,
+  Group,
+  Separator,
+} from "react-resizable-panels";
 
 type TabPerfState = {
   bytesTotal: number;
@@ -1194,29 +1200,47 @@ export function App() {
     return tabs.filter(tab => !tabIdsInLayout.has(tab.id));
   }, [tabs, tabIdsInLayout]);
 
+  const [, updatePanelSizes] = useAtom(updatePanelSizesAtom);
+
   const renderPaneNode = useCallback((node: PaneNode): ReactNode => {
     if (node.type === "split") {
       const [first, second] = node.children;
       const [sizeA, sizeB] = node.sizes;
       const isHorizontal = node.direction === "horizontal";
+
       return (
-        <div
+        <Group
           key={node.id}
-          className={isHorizontal ? "flex h-full min-h-0 flex-row gap-2" : "flex h-full min-h-0 flex-col gap-2"}
+          className="h-full"
+          orientation={isHorizontal ? "horizontal" : "vertical"}
         >
-          <div
-            className="min-h-0 min-w-0"
-            style={isHorizontal ? { flexBasis: `${sizeA * 100}%`, flexGrow: 0, flexShrink: 0 } : { flexBasis: `${sizeA * 100}%`, flexGrow: 0, flexShrink: 0 }}
+          <Panel
+            className="min-h-0 min-w-0 focus:outline-none"
+            defaultSize={sizeA * 100}
+            minSize={10}
+            onResize={(panelSize) => {
+              const size = panelSize.asPercentage;
+              const newSizeB = 100 - size;
+              updatePanelSizes({ paneId: node.id, sizes: [size / 100, newSizeB / 100] });
+            }}
           >
             {renderPaneNode(first)}
-          </div>
-          <div
-            className="min-h-0 min-w-0"
-            style={isHorizontal ? { flexBasis: `${sizeB * 100}%`, flexGrow: 0, flexShrink: 0 } : { flexBasis: `${sizeB * 100}%`, flexGrow: 0, flexShrink: 0 }}
+          </Panel>
+          <Separator
+            className={`${
+              isHorizontal
+                ? "w-1.5 cursor-col-resize hover:bg-slate-500"
+                : "h-1.5 cursor-row-resize hover:bg-slate-500"
+            } bg-slate-700`}
+          />
+          <Panel
+            className="min-h-0 min-w-0 focus:outline-none"
+            defaultSize={sizeB * 100}
+            minSize={10}
           >
             {renderPaneNode(second)}
-          </div>
-        </div>
+          </Panel>
+        </Group>
       );
     }
 
@@ -1233,10 +1257,10 @@ export function App() {
         key={node.id}
         className={
           dropPreview?.paneId === node.id
-            ? "relative grid h-full min-h-0 grid-rows-[auto_auto_1fr] gap-2 rounded-xl border border-sky-400 bg-zinc-900/40 p-2"
+            ? "relative grid h-full min-h-0 grid-rows-[auto_auto_1fr] gap-2 rounded-xl border border-sky-400 bg-zinc-900/40 p-2 focus:outline-none"
             : node.id === workspace.activePaneId
-              ? "relative grid h-full min-h-0 grid-rows-[auto_auto_1fr] gap-2 rounded-xl border border-amber-400/80 bg-zinc-900/40 p-2"
-              : "relative grid h-full min-h-0 grid-rows-[auto_auto_1fr] gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 p-2"
+              ? "relative grid h-full min-h-0 grid-rows-[auto_auto_1fr] gap-2 rounded-xl border border-amber-400/80 bg-zinc-900/40 p-2 focus:outline-none"
+              : "relative grid h-full min-h-0 grid-rows-[auto_auto_1fr] gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 p-2 focus:outline-none"
         }
         onMouseDown={() => setActivePane({ paneId: node.id })}
         onDragOver={(event) => {
@@ -1522,6 +1546,7 @@ export function App() {
     splitPane,
     tabsById,
     updateCommandChannel,
+    updatePanelSizes,
     updateTabInput,
     updateTabTitle,
     updateStatus,
