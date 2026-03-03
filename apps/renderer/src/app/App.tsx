@@ -459,6 +459,7 @@ export function App() {
   const pendingCommandsRef = useRef<Map<string, string[]>>(new Map());
   const startupScriptTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>[]>>(new Map());
   const executedStartupScriptsRef = useRef<Map<string, Set<string>>>(new Map());
+  const pendingStartupRerunTabIdsRef = useRef<Set<string>>(new Set());
   const markStartupReadyOutputRef = useRef<(tabId: string, bytes: number) => void>(() => undefined);
   const startupReadyGateRef = useRef<Map<
     string,
@@ -893,6 +894,38 @@ export function App() {
     }
   }, [handleTerminalSessionReady, tabs]);
 
+  useEffect(() => {
+    if (pendingStartupRerunTabIdsRef.current.size === 0) return;
+
+    for (const tab of tabs) {
+      if (!pendingStartupRerunTabIdsRef.current.has(tab.id)) continue;
+      if (tab.tabKind !== "terminal.local") {
+        pendingStartupRerunTabIdsRef.current.delete(tab.id);
+        continue;
+      }
+      const scripts = parseStartupScriptsFromInput(tab.input);
+      if (scripts.length === 0) {
+        pendingStartupRerunTabIdsRef.current.delete(tab.id);
+        continue;
+      }
+      if (tab.status !== "ready") continue;
+      if (!tab.session?.sessionId) continue;
+
+      const sessionKey = `${tab.id}:${tab.session.sessionId}`;
+      clearStartupScriptTimersForSession(sessionKey);
+      clearStartupReadyGateForSession(sessionKey);
+      clearExecutedStartupScriptsForTab(tab.id);
+      handleTerminalSessionReady(tab.id);
+      pendingStartupRerunTabIdsRef.current.delete(tab.id);
+    }
+  }, [
+    clearExecutedStartupScriptsForTab,
+    clearStartupReadyGateForSession,
+    clearStartupScriptTimersForSession,
+    handleTerminalSessionReady,
+    tabs
+  ]);
+
   const closeTab = async (tabId: string) => {
     const snapshot = tabs;
     const target = snapshot.find((t) => t.id === tabId);
@@ -1006,13 +1039,21 @@ export function App() {
 
       commandChannelsRef.current.clear();
       pendingCommandsRef.current.clear();
-      for (const timers of startupScriptTimersRef.current.values()) {
-        for (const timer of timers) {
-          clearTimeout(timer);
+      if (options.killExisting || options.coldBoot) {
+        for (const timers of startupScriptTimersRef.current.values()) {
+          for (const timer of timers) {
+            clearTimeout(timer);
+          }
         }
+        startupScriptTimersRef.current.clear();
+        executedStartupScriptsRef.current.clear();
+        for (const gate of startupReadyGateRef.current.values()) {
+          if (gate.fallbackTimer) clearTimeout(gate.fallbackTimer);
+          if (gate.quietTimer) clearTimeout(gate.quietTimer);
+        }
+        startupReadyGateRef.current.clear();
+        pendingStartupRerunTabIdsRef.current.clear();
       }
-      startupScriptTimersRef.current.clear();
-      executedStartupScriptsRef.current.clear();
 
       if (!snapshot) {
         setWorkspace(createDefaultWorkspaceLayout());
@@ -1153,7 +1194,16 @@ export function App() {
       if (canPersistCurrentWorkspace()) {
         await saveWorkspaceNow();
       }
+      const reopenFromHistory = workspaceById.get(workspaceId)?.isClosed === true;
       const snapshot = await window.localtermApi.workspace.load({ id: workspaceId });
+      if (reopenFromHistory) {
+        for (const descriptor of snapshot.tabs) {
+          if (descriptor.tabKind !== "terminal.local") continue;
+          const scripts = parseStartupScriptsFromInput(descriptor.input);
+          if (scripts.length === 0) continue;
+          pendingStartupRerunTabIdsRef.current.add(descriptor.id);
+        }
+      }
       // Hot switch: don't kill existing sessions, just change layout
       await restoreWorkspaceSnapshot(snapshot, { killExisting: false, coldBoot: false });
       await refreshWorkspaceList();
@@ -1165,6 +1215,7 @@ export function App() {
     refreshWorkspaceList,
     restoreWorkspaceSnapshot,
     saveWorkspaceNow,
+    workspaceById,
     workspace.id,
     workspaceBootstrapped
   ]);
