@@ -23,6 +23,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getTabDriver, type LocalTerminalDriverInput } from "../lib/tab-drivers";
 import type {
+  LocalSessionStartupScript,
   PaneDirection,
   PaneNode,
   TabKind,
@@ -92,12 +93,26 @@ type TabContextMenuState = {
   y: number;
 } | null;
 
+type PendingTerminalCreation = {
+  paneId: string;
+  activate: boolean;
+} | null;
+
+type StartupScriptDraft = {
+  id: string;
+  command: string;
+  delayMs: number;
+  enabled: boolean;
+};
+
 const BULK_STRESS_DEFAULTS = {
   sessions: 4,
   durationSec: 300,
   burstPerTick: 120,
   payloadSize: 140
 } as const;
+const STARTUP_READY_FALLBACK_MS = 1200;
+const STARTUP_READY_QUIET_MS = 120;
 
 function nextTabTitle(count: number) {
   return `Local ${count}`;
@@ -219,6 +234,82 @@ const DEFAULT_LOCAL_TERMINAL_INPUT: LocalTerminalDriverInput = {
 };
 
 const WORKSPACE_AUTOSAVE_DEBOUNCE_MS = 500;
+
+function makeStartupScriptId() {
+  return globalThis.crypto?.randomUUID?.() ?? `script-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function sanitizeDelayMs(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.floor(value));
+}
+
+function toScriptCommandLine(command: string) {
+  const trimmed = command.trim();
+  if (!trimmed) return "";
+  if (trimmed.endsWith("\n") || trimmed.endsWith("\r\n")) return trimmed;
+  const isWindows = navigator.platform.toLowerCase().includes("win");
+  return `${trimmed}${isWindows ? "\r\n" : "\n"}`;
+}
+
+function draftsToStartupScripts(drafts: StartupScriptDraft[]): LocalSessionStartupScript[] {
+  return drafts
+    .filter((entry) => entry.enabled && entry.command.trim().length > 0)
+    .map((entry) => ({
+      id: entry.id,
+      command: entry.command.trim(),
+      delayMs: sanitizeDelayMs(entry.delayMs),
+      enabled: entry.enabled
+    }));
+}
+
+function parseStartupScriptsFromInput(input: Record<string, unknown>): LocalSessionStartupScript[] {
+  const raw = input.startupScripts;
+  if (!Array.isArray(raw)) return [];
+  const parsed: LocalSessionStartupScript[] = [];
+  raw.forEach((item, index) => {
+    if (!item || typeof item !== "object") return;
+    const candidate = item as Partial<LocalSessionStartupScript>;
+    if (typeof candidate.command !== "string" || candidate.command.trim().length === 0) return;
+    const command = candidate.command.trim();
+    const delayMs = sanitizeDelayMs(
+      typeof candidate.delayMs === "number" ? candidate.delayMs : Number(candidate.delayMs ?? 0)
+    );
+    const fallbackId = `legacy-${index}-${delayMs}-${command}`;
+    parsed.push({
+      id: typeof candidate.id === "string" && candidate.id.length > 0 ? candidate.id : fallbackId,
+      command,
+      delayMs,
+      enabled: candidate.enabled !== false
+    });
+  });
+  return parsed.filter((entry) => entry.enabled);
+}
+
+function parseStartupScriptDraftsFromInput(input: Record<string, unknown>): StartupScriptDraft[] {
+  const raw = input.startupScripts;
+  if (!Array.isArray(raw)) return [];
+  const parsed: StartupScriptDraft[] = [];
+  raw.forEach((item, index) => {
+    if (!item || typeof item !== "object") return;
+    const candidate = item as Partial<LocalSessionStartupScript>;
+    if (typeof candidate.command !== "string") return;
+    const command = candidate.command;
+    const delayMs = sanitizeDelayMs(
+      typeof candidate.delayMs === "number" ? candidate.delayMs : Number(candidate.delayMs ?? 0)
+    );
+    parsed.push({
+      id:
+        typeof candidate.id === "string" && candidate.id.length > 0
+          ? candidate.id
+          : `legacy-${index}-${delayMs}-${command.trim()}`,
+      command,
+      delayMs,
+      enabled: candidate.enabled !== false
+    });
+  });
+  return parsed;
+}
 
 function toPersistedTabDescriptors(records: TabRecord[]): TabDescriptor[] {
   return records.map((record) => {
@@ -342,6 +433,9 @@ export function App() {
   const [workspaceActionBusy, setWorkspaceActionBusy] = useState(false);
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [saveAsName, setSaveAsName] = useState("");
+  const [terminalStartupScriptsTargetTabId, setTerminalStartupScriptsTargetTabId] = useState<string | null>(null);
+  const [pendingTerminalCreation, setPendingTerminalCreation] = useState<PendingTerminalCreation>(null);
+  const [terminalStartupScriptDrafts, setTerminalStartupScriptDrafts] = useState<StartupScriptDraft[]>([]);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [openWorkspacePicker, setOpenWorkspacePicker] = useState(false);
@@ -363,6 +457,16 @@ export function App() {
   const restoringWorkspaceRef = useRef(false);
   const commandChannelsRef = useRef<Map<string, (text: string) => void>>(new Map());
   const pendingCommandsRef = useRef<Map<string, string[]>>(new Map());
+  const startupScriptTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>[]>>(new Map());
+  const executedStartupScriptsRef = useRef<Map<string, Set<string>>>(new Map());
+  const markStartupReadyOutputRef = useRef<(tabId: string, bytes: number) => void>(() => undefined);
+  const startupReadyGateRef = useRef<Map<
+    string,
+    {
+      fallbackTimer: ReturnType<typeof setTimeout> | null;
+      quietTimer: ReturnType<typeof setTimeout> | null;
+    }
+  >>(new Map());
   const pluginTemplates = useMemo(() => listPluginViewTemplates(), []);
   const leafPaneIds = useMemo(() => listLeafPaneIds(workspace.root), [workspace.root]);
   const workspaceById = useMemo(
@@ -381,6 +485,12 @@ export function App() {
     () => JSON.stringify(toPersistedTabDescriptors(tabs)),
     [tabs]
   );
+  const terminalStartupScriptsTargetTab = useMemo(() => {
+    if (!terminalStartupScriptsTargetTabId) return null;
+    const entry = tabs.find((tab) => tab.id === terminalStartupScriptsTargetTabId);
+    if (!entry || entry.tabKind !== "terminal.local") return null;
+    return entry;
+  }, [tabs, terminalStartupScriptsTargetTabId]);
 
   const resolvedActivePaneId = useMemo(() => {
     if (getLeafPaneById(workspace.root, workspace.activePaneId)) {
@@ -398,6 +508,7 @@ export function App() {
   }, [setTabs]);
 
   const recordTraffic = useCallback((tabId: string, bytes: number, lines: number) => {
+    markStartupReadyOutputRef.current(tabId, bytes);
     setTabPerf((prev) => {
       const current = prev[tabId] ?? initialTabPerfState();
       return {
@@ -438,6 +549,55 @@ export function App() {
       )
     );
   }, [setTabs]);
+
+  const addTerminalStartupScriptDraft = useCallback(() => {
+    setTerminalStartupScriptDrafts((prev) => [
+      ...prev,
+      {
+        id: makeStartupScriptId(),
+        command: "",
+        delayMs: 500,
+        enabled: true
+      }
+    ]);
+  }, []);
+
+  const updateTerminalStartupScriptDraft = useCallback((id: string, patch: Partial<StartupScriptDraft>) => {
+    setTerminalStartupScriptDrafts((prev) =>
+      prev.map((entry) =>
+        entry.id === id
+          ? {
+              ...entry,
+              ...patch
+            }
+          : entry
+      )
+    );
+  }, []);
+
+  const removeTerminalStartupScriptDraft = useCallback((id: string) => {
+    setTerminalStartupScriptDrafts((prev) => prev.filter((entry) => entry.id !== id));
+  }, []);
+
+  const closeTerminalStartupScriptsDialog = useCallback(() => {
+    setTerminalStartupScriptsTargetTabId(null);
+    setPendingTerminalCreation(null);
+    setTerminalStartupScriptDrafts([]);
+  }, []);
+
+  const openTerminalStartupScriptsEditor = useCallback((tabId: string) => {
+    const tab = tabsRef.current.find((entry) => entry.id === tabId);
+    if (!tab || tab.tabKind !== "terminal.local") return;
+    setTerminalStartupScriptsTargetTabId(tabId);
+    setPendingTerminalCreation(null);
+    setTerminalStartupScriptDrafts(parseStartupScriptDraftsFromInput(tab.input));
+  }, []);
+
+  const openTerminalCreateDialog = useCallback((paneId: string, activate = true) => {
+    setTerminalStartupScriptsTargetTabId(null);
+    setPendingTerminalCreation({ paneId, activate });
+    setTerminalStartupScriptDrafts([]);
+  }, []);
 
   const createTabWithDriver = useCallback(async (payload: {
     tabKind: TabKind;
@@ -504,6 +664,66 @@ export function App() {
     });
   }, [createTabWithDriver, resolvedActivePaneId]);
 
+  const createLocalTerminalTabWithScripts = useCallback(async (
+    payload: {
+      paneId: string;
+      activate: boolean;
+      startupScripts: LocalSessionStartupScript[];
+    }
+  ) => {
+    tabCounterRef.current += 1;
+    const input: LocalTerminalDriverInput = {
+      ...DEFAULT_LOCAL_TERMINAL_INPUT,
+      ...(payload.startupScripts.length > 0 ? { startupScripts: payload.startupScripts } : {})
+    };
+    return await createTabWithDriver({
+      tabKind: "terminal.local",
+      title: nextTabTitle(tabCounterRef.current),
+      input,
+      activate: payload.activate,
+      paneId: payload.paneId
+    });
+  }, [createTabWithDriver]);
+
+  const saveTerminalStartupScriptsEditor = useCallback(() => {
+    const startupScripts = draftsToStartupScripts(terminalStartupScriptDrafts);
+    if (terminalStartupScriptsTargetTabId) {
+      setTabs((prev) =>
+        prev.map((tab) => {
+          if (tab.id !== terminalStartupScriptsTargetTabId || tab.tabKind !== "terminal.local") {
+            return tab;
+          }
+          return {
+            ...tab,
+            input: {
+              ...tab.input,
+              ...(startupScripts.length > 0 ? { startupScripts } : { startupScripts: [] })
+            }
+          };
+        })
+      );
+      closeTerminalStartupScriptsDialog();
+      return;
+    }
+
+    if (pendingTerminalCreation) {
+      const { paneId, activate } = pendingTerminalCreation;
+      closeTerminalStartupScriptsDialog();
+      void createLocalTerminalTabWithScripts({
+        paneId,
+        activate,
+        startupScripts
+      });
+    }
+  }, [
+    closeTerminalStartupScriptsDialog,
+    createLocalTerminalTabWithScripts,
+    pendingTerminalCreation,
+    setTabs,
+    terminalStartupScriptDrafts,
+    terminalStartupScriptsTargetTabId
+  ]);
+
   const createPluginViewTab = useCallback(async (request: OpenPluginViewRequest) => {
     const template = pluginTemplates.find(
       (entry) =>
@@ -533,6 +753,146 @@ export function App() {
     return await createTabWithDriver(payload);
   }, [createTabWithDriver, pluginTemplates]);
 
+  const clearStartupScriptTimersForSession = useCallback((sessionKey: string) => {
+    const timers = startupScriptTimersRef.current.get(sessionKey);
+    if (!timers) return;
+    for (const timer of timers) {
+      clearTimeout(timer);
+    }
+    startupScriptTimersRef.current.delete(sessionKey);
+  }, []);
+
+  const clearStartupReadyGateForSession = useCallback((sessionKey: string) => {
+    const gate = startupReadyGateRef.current.get(sessionKey);
+    if (!gate) return;
+    if (gate.fallbackTimer) clearTimeout(gate.fallbackTimer);
+    if (gate.quietTimer) clearTimeout(gate.quietTimer);
+    startupReadyGateRef.current.delete(sessionKey);
+  }, []);
+
+  const clearStartupScriptTimersForTab = useCallback((tabId: string) => {
+    for (const sessionKey of startupScriptTimersRef.current.keys()) {
+      if (!sessionKey.startsWith(`${tabId}:`)) continue;
+      clearStartupScriptTimersForSession(sessionKey);
+    }
+  }, [clearStartupScriptTimersForSession]);
+
+  const clearStartupReadyGateForTab = useCallback((tabId: string) => {
+    for (const sessionKey of startupReadyGateRef.current.keys()) {
+      if (!sessionKey.startsWith(`${tabId}:`)) continue;
+      clearStartupReadyGateForSession(sessionKey);
+    }
+  }, [clearStartupReadyGateForSession]);
+
+  const clearExecutedStartupScriptsForTab = useCallback((tabId: string) => {
+    for (const sessionKey of executedStartupScriptsRef.current.keys()) {
+      if (!sessionKey.startsWith(`${tabId}:`)) continue;
+      executedStartupScriptsRef.current.delete(sessionKey);
+    }
+  }, []);
+
+  const sendOrQueueCommand = useCallback((tabId: string, command: string) => {
+    const send = commandChannelsRef.current.get(tabId);
+    if (send) {
+      send(command);
+      return true;
+    }
+    const pending = pendingCommandsRef.current.get(tabId) ?? [];
+    pending.push(command);
+    pendingCommandsRef.current.set(tabId, pending);
+    return false;
+  }, []);
+
+  const runStartupScriptsForSession = useCallback((sessionKey: string) => {
+    clearStartupReadyGateForSession(sessionKey);
+    clearStartupScriptTimersForSession(sessionKey);
+
+    const separatorIndex = sessionKey.indexOf(":");
+    if (separatorIndex <= 0) return;
+    const tabId = sessionKey.slice(0, separatorIndex);
+    const expectedSessionId = sessionKey.slice(separatorIndex + 1);
+    const tab = tabsRef.current.find((entry) => entry.id === tabId);
+    if (!tab || tab.tabKind !== "terminal.local") return;
+    if (!tab.session?.sessionId || tab.session.sessionId !== expectedSessionId) return;
+
+    const scripts = parseStartupScriptsFromInput(tab.input);
+    if (scripts.length === 0) return;
+
+    const executed = executedStartupScriptsRef.current.get(sessionKey) ?? new Set<string>();
+    executedStartupScriptsRef.current.set(sessionKey, executed);
+
+    const scheduledTimers: ReturnType<typeof setTimeout>[] = [];
+    for (const script of scripts) {
+      if (executed.has(script.id)) continue;
+      const delayMs = sanitizeDelayMs(script.delayMs);
+      const timer = setTimeout(() => {
+        const current = tabsRef.current.find((entry) => entry.id === tabId);
+        if (!current || current.tabKind !== "terminal.local") return;
+        if (!current.session?.sessionId || current.session.sessionId !== expectedSessionId) return;
+        if (executed.has(script.id)) return;
+        const line = toScriptCommandLine(script.command);
+        if (!line) return;
+        sendOrQueueCommand(tabId, line);
+        executed.add(script.id);
+      }, delayMs);
+      scheduledTimers.push(timer);
+    }
+
+    if (scheduledTimers.length > 0) {
+      startupScriptTimersRef.current.set(sessionKey, scheduledTimers);
+    }
+  }, [clearStartupReadyGateForSession, clearStartupScriptTimersForSession, sendOrQueueCommand]);
+
+  const markStartupReadyOutput = useCallback((tabId: string, bytes: number) => {
+    if (bytes <= 0) return;
+    const tab = tabsRef.current.find((entry) => entry.id === tabId);
+    if (!tab || tab.tabKind !== "terminal.local" || !tab.session?.sessionId) return;
+    const sessionKey = `${tabId}:${tab.session.sessionId}`;
+    const gate = startupReadyGateRef.current.get(sessionKey);
+    if (!gate) return;
+    if (gate.quietTimer) clearTimeout(gate.quietTimer);
+    gate.quietTimer = setTimeout(() => {
+      runStartupScriptsForSession(sessionKey);
+    }, STARTUP_READY_QUIET_MS);
+  }, [runStartupScriptsForSession]);
+
+  useEffect(() => {
+    markStartupReadyOutputRef.current = markStartupReadyOutput;
+  }, [markStartupReadyOutput]);
+
+  const handleTerminalSessionReady = useCallback((tabId: string) => {
+    const tab = tabsRef.current.find((entry) => entry.id === tabId);
+    if (!tab || tab.tabKind !== "terminal.local" || !tab.session?.sessionId) return;
+    const sessionKey = `${tabId}:${tab.session.sessionId}`;
+    clearStartupReadyGateForSession(sessionKey);
+    const fallbackTimer = setTimeout(() => {
+      runStartupScriptsForSession(sessionKey);
+    }, STARTUP_READY_FALLBACK_MS);
+    startupReadyGateRef.current.set(sessionKey, {
+      fallbackTimer,
+      quietTimer: null
+    });
+  }, [clearStartupReadyGateForSession, runStartupScriptsForSession]);
+
+  useEffect(() => {
+    for (const tab of tabs) {
+      if (tab.tabKind !== "terminal.local") continue;
+      if (tab.status !== "ready") continue;
+      if (!tab.session?.sessionId) continue;
+      const scripts = parseStartupScriptsFromInput(tab.input);
+      if (scripts.length === 0) continue;
+
+      const sessionKey = `${tab.id}:${tab.session.sessionId}`;
+      if (startupReadyGateRef.current.has(sessionKey)) continue;
+      if (startupScriptTimersRef.current.has(sessionKey)) continue;
+
+      const executed = executedStartupScriptsRef.current.get(sessionKey);
+      if (executed && executed.size >= scripts.length) continue;
+
+      handleTerminalSessionReady(tab.id);
+    }
+  }, [handleTerminalSessionReady, tabs]);
+
   const closeTab = async (tabId: string) => {
     const snapshot = tabs;
     const target = snapshot.find((t) => t.id === tabId);
@@ -551,6 +911,9 @@ export function App() {
     }
     commandChannelsRef.current.delete(tabId);
     pendingCommandsRef.current.delete(tabId);
+    clearStartupScriptTimersForTab(tabId);
+    clearStartupReadyGateForTab(tabId);
+    clearExecutedStartupScriptsForTab(tabId);
   };
 
   const updateCommandChannel = useCallback((tabId: string, send: ((text: string) => void) | null) => {
@@ -565,24 +928,37 @@ export function App() {
       }
     } else {
       commandChannelsRef.current.delete(tabId);
+      clearStartupScriptTimersForTab(tabId);
+      clearStartupReadyGateForTab(tabId);
     }
-  }, []);
-
-  const sendOrQueueCommand = useCallback((tabId: string, command: string) => {
-    const send = commandChannelsRef.current.get(tabId);
-    if (send) {
-      send(command);
-      return true;
-    }
-    const pending = pendingCommandsRef.current.get(tabId) ?? [];
-    pending.push(command);
-    pendingCommandsRef.current.set(tabId, pending);
-    return false;
-  }, []);
+  }, [clearStartupReadyGateForTab, clearStartupScriptTimersForTab]);
 
   useEffect(() => {
     tabsRef.current = tabs;
   }, [tabs]);
+
+  useEffect(() => {
+    return () => {
+      for (const timers of startupScriptTimersRef.current.values()) {
+        for (const timer of timers) {
+          clearTimeout(timer);
+        }
+      }
+      startupScriptTimersRef.current.clear();
+      executedStartupScriptsRef.current.clear();
+      for (const gate of startupReadyGateRef.current.values()) {
+        if (gate.fallbackTimer) clearTimeout(gate.fallbackTimer);
+        if (gate.quietTimer) clearTimeout(gate.quietTimer);
+      }
+      startupReadyGateRef.current.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!terminalStartupScriptsTargetTabId) return;
+    if (terminalStartupScriptsTargetTab) return;
+    closeTerminalStartupScriptsDialog();
+  }, [closeTerminalStartupScriptsDialog, terminalStartupScriptsTargetTab, terminalStartupScriptsTargetTabId]);
 
   const refreshWorkspaceList = useCallback(async () => {
     const listed = await window.localtermApi.workspace.list();
@@ -630,6 +1006,13 @@ export function App() {
 
       commandChannelsRef.current.clear();
       pendingCommandsRef.current.clear();
+      for (const timers of startupScriptTimersRef.current.values()) {
+        for (const timer of timers) {
+          clearTimeout(timer);
+        }
+      }
+      startupScriptTimersRef.current.clear();
+      executedStartupScriptsRef.current.clear();
 
       if (!snapshot) {
         setWorkspace(createDefaultWorkspaceLayout());
@@ -1356,7 +1739,7 @@ export function App() {
               className="h-6 px-2 text-[10px]"
               onClick={() => {
                 setActivePane({ paneId: node.id });
-                void createLocalTerminalTab(true, node.id);
+                openTerminalCreateDialog(node.id, true);
               }}
             >
               +Term
@@ -1528,6 +1911,7 @@ export function App() {
                       isActive={tab.id === activeTabId}
                       onTraffic={recordTraffic}
                       onCommandChannel={updateCommandChannel}
+                      onSessionReady={handleTerminalSessionReady}
                       onStatus={updateStatus}
                       onWsConnected={updateWsConnected}
                     />
@@ -1559,7 +1943,7 @@ export function App() {
                 variant="secondary"
                 onClick={() => {
                   setActivePane({ paneId: node.id });
-                  void createLocalTerminalTab(true, node.id);
+                  openTerminalCreateDialog(node.id, true);
                 }}
               >
                 New Terminal In Pane
@@ -1575,9 +1959,10 @@ export function App() {
     commitTabRename,
     closePane,
     closeTab,
-    createLocalTerminalTab,
+    openTerminalCreateDialog,
     createPluginViewTab,
     dropPreview,
+    handleTerminalSessionReady,
     leafPaneIds.length,
     moveTabToSplitPane,
     moveTab,
@@ -1756,6 +2141,7 @@ export function App() {
                     isActive={false}
                     onTraffic={recordTraffic}
                     onCommandChannel={updateCommandChannel}
+                    onSessionReady={handleTerminalSessionReady}
                     onStatus={updateStatus}
                     onWsConnected={updateWsConnected}
                   />
@@ -1844,6 +2230,18 @@ export function App() {
           style={{ left: tabContextMenu.x, top: tabContextMenu.y }}
           onMouseDown={(event) => event.stopPropagation()}
         >
+          {tabsById.get(tabContextMenu.tabId)?.tabKind === "terminal.local" ? (
+            <button
+              type="button"
+              className="w-full rounded px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+              onClick={() => {
+                openTerminalStartupScriptsEditor(tabContextMenu.tabId);
+                setTabContextMenu(null);
+              }}
+            >
+              Startup Scripts
+            </button>
+          ) : null}
           <button
             type="button"
             className="w-full rounded px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
@@ -1905,6 +2303,98 @@ export function App() {
               </button>
             ))}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={terminalStartupScriptsTargetTabId !== null || pendingTerminalCreation !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeTerminalStartupScriptsDialog();
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Terminal Startup Scripts</DialogTitle>
+            <DialogDescription>
+              {terminalStartupScriptsTargetTab
+                ? `Run commands after this terminal session is ready. Target: ${terminalStartupScriptsTargetTab.title}`
+                : "Choose startup scripts for the new terminal session."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[55vh] space-y-3 overflow-auto">
+            {terminalStartupScriptDrafts.map((entry) => (
+              <div key={entry.id} className="grid grid-cols-[190px_1fr_40px] gap-2">
+                <div className="flex items-center gap-2 rounded-md border border-zinc-700 bg-zinc-950 px-2">
+                  <input
+                    type="number"
+                    min={0}
+                    className="h-10 w-full bg-transparent text-sm text-zinc-100 outline-none"
+                    value={entry.delayMs}
+                    onChange={(event) => {
+                      updateTerminalStartupScriptDraft(entry.id, {
+                        delayMs: sanitizeDelayMs(Number(event.target.value))
+                      });
+                    }}
+                    placeholder="Delay (ms)"
+                  />
+                  <span className="text-sm text-zinc-400">ms</span>
+                </div>
+                <input
+                  className="h-10 rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none"
+                  value={entry.command}
+                  onChange={(event) => {
+                    updateTerminalStartupScriptDraft(entry.id, {
+                      command: event.target.value
+                    });
+                  }}
+                  placeholder="Command"
+                />
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-10 w-10 text-zinc-400 hover:text-zinc-100"
+                  onClick={() => removeTerminalStartupScriptDraft(entry.id)}
+                  title="Remove script"
+                >
+                  −
+                </Button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="flex h-11 w-full items-center justify-center rounded-md border border-dashed border-zinc-700 bg-zinc-900/60 text-sm text-zinc-300 hover:border-zinc-500 hover:text-zinc-100"
+              onClick={addTerminalStartupScriptDraft}
+            >
+              + Add Startup Script
+            </button>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeTerminalStartupScriptsDialog}>
+              Cancel
+            </Button>
+            {pendingTerminalCreation ? (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const creation = pendingTerminalCreation;
+                  if (!creation) return;
+                  closeTerminalStartupScriptsDialog();
+                  void createLocalTerminalTabWithScripts({
+                    paneId: creation.paneId,
+                    activate: creation.activate,
+                    startupScripts: []
+                  });
+                }}
+              >
+                Create Without Scripts
+              </Button>
+            ) : null}
+            <Button onClick={saveTerminalStartupScriptsEditor}>
+              {pendingTerminalCreation ? "Create Terminal" : "Save"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

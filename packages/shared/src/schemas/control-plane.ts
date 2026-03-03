@@ -1,6 +1,12 @@
 import { z } from "zod";
 
 const envRecordSchema = z.record(z.string(), z.string());
+export const localSessionStartupScriptSchema = z.object({
+  id: z.string().min(1),
+  command: z.string().min(1),
+  delayMs: z.number().int().min(0).max(60 * 60 * 1000).default(0),
+  enabled: z.boolean().default(true)
+});
 
 export const createLocalSessionRequestSchema = z.object({
   sessionType: z.literal("local"),
@@ -9,7 +15,8 @@ export const createLocalSessionRequestSchema = z.object({
   shell: z.string().min(1).optional(),
   shellArgs: z.array(z.string()).optional(),
   cwd: z.string().min(1).optional(),
-  env: envRecordSchema.optional()
+  env: envRecordSchema.optional(),
+  startupScripts: z.array(localSessionStartupScriptSchema).max(64).optional()
 });
 
 export const createLocalSessionResponseSchema = z.object({
@@ -45,6 +52,7 @@ export const okResponseSchema = z.object({
 });
 
 export type CreateLocalSessionRequest = z.infer<typeof createLocalSessionRequestSchema>;
+export type LocalSessionStartupScript = z.infer<typeof localSessionStartupScriptSchema>;
 export type CreateLocalSessionResponse = z.infer<typeof createLocalSessionResponseSchema>;
 export type ResizeSessionRequest = z.infer<typeof resizeSessionRequestSchema>;
 export type KillSessionRequest = z.infer<typeof killSessionRequestSchema>;

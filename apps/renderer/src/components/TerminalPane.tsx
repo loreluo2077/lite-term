@@ -24,6 +24,7 @@ type Props = {
   isActive: boolean;
   onTraffic: (tabId: string, bytes: number, lines: number) => void;
   onCommandChannel: (tabId: string, send: ((text: string) => void) | null) => void;
+  onSessionReady: (tabId: string) => void;
   onStatus: (tabId: string, status: TabRecord["status"]) => void;
   onWsConnected: (tabId: string, connected: boolean) => void;
 };
@@ -33,6 +34,7 @@ export function TerminalPane({
   isActive,
   onTraffic,
   onCommandChannel,
+  onSessionReady,
   onStatus,
   onWsConnected
 }: Props) {
@@ -265,7 +267,10 @@ export function TerminalPane({
       },
       onControlEvent: (event) => {
         if (generation !== connectionGenerationRef.current) return;
-        if (event.type === "ready") onStatus(tab.id, "ready");
+        if (event.type === "ready") {
+          onStatus(tab.id, "ready");
+          onSessionReady(tab.id);
+        }
         if (event.type === "exit") {
           term.writeln(`\r\n[session exited] code=${event.exitCode ?? "null"}`);
           onStatus(tab.id, "exited");

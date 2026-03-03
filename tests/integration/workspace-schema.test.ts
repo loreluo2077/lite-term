@@ -80,6 +80,50 @@ test("workspace snapshot schema accepts plugin.view state payload", () => {
   assert.equal(parsed.tabs[0]?.tabKind, "plugin.view");
 });
 
+test("workspace snapshot schema accepts terminal startup scripts payload", () => {
+  const parsed = workspaceSnapshotSchema.parse({
+    layout: {
+      schemaVersion: 2,
+      id: "scripts",
+      name: "scripts",
+      activePaneId: "pane-1",
+      createdAt: 1,
+      updatedAt: 1,
+      root: {
+        id: "pane-1",
+        type: "leaf",
+        tabIds: ["tab-1"],
+        activeTabId: "tab-1"
+      }
+    },
+    tabs: [
+      {
+        id: "tab-1",
+        tabKind: "terminal.local",
+        title: "Local 1",
+        input: {
+          cols: 120,
+          rows: 30,
+          startupScripts: [
+            {
+              id: "script-1",
+              command: "echo ready",
+              delayMs: 500,
+              enabled: true
+            }
+          ]
+        },
+        restorePolicy: "recreate"
+      }
+    ]
+  });
+
+  assert.equal(parsed.tabs[0]?.tabKind, "terminal.local");
+  if (parsed.tabs[0]?.tabKind !== "terminal.local") return;
+  assert.equal(parsed.tabs[0].input.startupScripts.length, 1);
+  assert.equal(parsed.tabs[0].input.startupScripts[0]?.command, "echo ready");
+});
+
 test("workspace snapshot schema rejects split sizes that do not sum to 1", () => {
   assert.throws(
     () =>
