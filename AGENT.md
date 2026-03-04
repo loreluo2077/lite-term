@@ -1,12 +1,81 @@
-# AGENTS.md
+# AGENT.md
 
-最佳实践
+本文件给 AI Agent 使用，不是给普通用户看的 README。
 
-产品文档
+## 1. 目标
 
-要读取哪些内容，要更新哪些内容
+在不破坏现有行为的前提下，基于代码事实完成需求：
 
+- 先理解再修改
+- 文档和代码保持一致
 
-任务列表也放在这里
+## 2. 开工前必读顺序
 
+1. `docs/project_manual.md`（产品说明书）
+2. `docs/project_architecture.md`（架构和数据流）
+3. 按任务类型阅读详细的功能文档（`docs/project_feature/worksapce.md`、`docs/project_feature/panel.md`、`docs/project_feature/session.md`）
+4. 再读取相关源码与测试
 
+如果文档与代码冲突，以代码现状为准，并在交付时明确指出差异;
+
+## 3. 仓库关键路径
+
+- `apps/desktop`: Electron 主进程、IPC、workspace 存储
+- `apps/renderer`: UI、pane-tree、tab 驱动、插件视图
+- `packages/control-plane`: 会话生命周期控制
+- `packages/session-worker`: 每会话 worker 进程入口
+- `packages/session-local`: 本地 pty 适配器
+- `packages/shared`: schema、协议、常量
+- `tests/integration`: 关键集成测试
+
+## 4. 任务执行流程
+
+1. 盘点上下文：读相关文档、代码、测试
+2. 明确影响面：列出要改的文件
+3. 实施修改：只改与任务直接相关文件
+4. 本地校验：至少执行相关检查或测试
+5. 回写文档：若行为变化，更新对应文档
+6. 输出结果：说明改了什么、为什么、如何验证
+
+## 5. 修改原则
+
+- 不随意重命名或移动文件，除非任务明确要求
+- 不回滚用户已有改动
+- 不引入与任务无关的大规模重构
+- 优先复用现有抽象（schema、driver、adapter、atom）
+- 任何“已实现”描述必须能在代码中找到对应实现
+
+## 6. 文档更新规则
+
+当代码行为变更时，至少检查以下文档是否需要同步：
+
+- `README.md`（用户入口、命令、能力摘要）
+- `docs/project_manual.md`（产品能力）
+- `docs/project_architecture.md`（模块和数据流）
+- `docs/project_feature` (产品功能的详细文档）
+
+禁止把“计划中”写成“已实现”。
+
+## 7. 常用命令
+
+```bash
+pnpm dev
+pnpm typecheck
+pnpm test
+pnpm verify:quick
+```
+
+## 8. 交付格式建议
+
+- 变更文件清单
+- 关键实现点
+- 验证结果（执行了哪些命令）
+- 未完成项或风险（如有）
+
+## 9. todo
+
+当前正在完成的需求内容:
+
+- [x] 1
+- [ ] 2
+- [ ] 3
