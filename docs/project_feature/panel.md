@@ -78,3 +78,35 @@ pane 头部快捷按钮：
 
 - 浮动 panel（overlays.floatingPanels）schema 已定义，UI 尚未实现
 - 暂无 pane 级快捷键（当前主要通过按钮和右键菜单操作）
+
+## 7. 自动化测试
+
+- 已覆盖（集成测试）:
+- `tests/integration/pane-tree.test.ts`
+- 覆盖分割、关闭 pane 后 tab 迁移、跨 pane 移动 tab
+- 间接覆盖（schema）:
+- `tests/integration/workspace-schema.test.ts`
+- 覆盖 split `sizes` 和为 1 的约束
+- 执行命令:
+- `pnpm test`
+- `pnpm verify:quick`
+
+## 8. UI测试
+
+- 分割操作:
+- 在同一 pane 连续点击 `Split H` / `Split V`，确认布局正确
+- 拖动分隔条后刷新应用，确认尺寸比例被恢复
+- 拖拽投放:
+- 将 tab 拖到 `center`，确认仅换 pane 不新增 split
+- 将 tab 拖到 `left/right/top/bottom`，确认自动分屏并移动 tab
+- 关闭行为:
+- 当仅剩一个 pane 时，`Close` 按钮应不可用
+- 关闭有 tab 的 pane 后，tab 应迁移到兄弟 pane 且可继续操作
+
+## 9. 人类验收
+
+- 验收标准:
+- 面板分割、拖拽、关闭行为与预期一致
+- 不出现“丢 tab”“activePane 错乱”“分割比例异常”
+- 重启后布局结构和 pane 尺寸可恢复
+- 多次切换 workspace 后，当前 workspace 的 pane 结构不被污染

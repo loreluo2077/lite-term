@@ -87,7 +87,40 @@ Workspace 是一份可持久化的工作快照，包含两部分：
 - 索引与快照写入采用原子写（临时文件 + rename）
 - schema 校验由 `@localterm/shared` 提供，防止非法结构入库
 
-## 7. 当前限制
+## 7. 自动化测试
+
+- 已覆盖（集成测试）:
+- `tests/integration/workspace-schema.test.ts`
+- 覆盖 workspace snapshot schema 与关键约束
+- `tests/integration/workspace-storage.test.ts`
+- 覆盖 save/load/list/close/delete/default 流程
+- `tests/integration/workspace-order.test.ts`
+- 覆盖 workspace 顺序稳定与追加规则
+- 执行命令:
+- `pnpm test`
+- `pnpm verify:quick`
+
+## 8. UI测试
+
+- 基础流程:
+- 新建 workspace，确认进入空布局并可创建 tab
+- 在多个 workspace 间切换，确认列表状态与当前激活项正确
+- 管理流程:
+- 对 workspace 执行 Rename、Save As、Close、历史重开，确认行为一致
+- 关闭当前 workspace 后，应正确切换到下一个可用 workspace 或临时空 workspace
+- 数据恢复:
+- 修改布局与 tab 后重启应用，确认快照恢复
+- 对于 `restorePolicy` 不同的 tab，确认恢复行为符合定义
+
+## 9. 人类验收
+
+- 验收标准:
+- workspace 切换稳定，无错误 workspace 被覆盖
+- 顺序、名称、关闭状态与 UI 展示一致
+- 热切换不丢运行态，冷启动按策略恢复
+- 自动保存生效，异常退出后仍可恢复到最近可用状态
+
+## 10. 当前限制
 
 - workspace 图标/排序策略较基础（当前按索引顺序显示）
 - 关闭/删除的权限与确认流程可进一步细化

@@ -90,3 +90,41 @@ shell 环境清洗：
 - `terminal.ssh` 仅有 noop driver，未接入真实实现
 - 暂无会话级权限控制与审计
 - 暂未实现“会话历史回放”持久化（输出仅在运行期内存与终端缓冲中）
+
+## 7. 自动化测试
+
+- 已覆盖（集成测试）:
+- `tests/integration/local-session.test.ts`
+- 覆盖会话创建、WS 连接、输出、resize、kill、延迟连接、唯一 pid/port、registry 快照
+- 辅助能力:
+- `packages/testkit/src/index.ts` 提供稳定 shell 参数与输出等待工具
+- 执行命令:
+- `pnpm test`
+- `pnpm verify:quick`
+- 诊断脚本:
+- `pnpm debug:sessions`
+- `pnpm kill:orphans`
+- `pnpm perf:stress`
+
+## 8. UI测试
+
+- 基础链路:
+- 新建 terminal tab，确认状态从 `starting` 到 `ready`
+- 输入命令并校验输出，关闭 tab 后会话应退出
+- 连接稳定性:
+- 触发 workspace 热切换，再切回原 workspace，确认终端仍可输入输出
+- 暂时断开连接后恢复页面，确认可重连
+- 启动脚本:
+- 为 terminal 配置多条 startup script（不同 delay）
+- 新建会话后确认脚本按预期执行且不重复执行
+- 性能面板:
+- 打开 Perf Panel，确认吞吐与内存采样正常更新
+
+## 9. 人类验收
+
+- 验收标准:
+- 会话可稳定创建、交互、销毁，无僵尸进程残留
+- 多会话并发时不存在端口冲突或会话串线
+- 热切换场景下会话连续性符合预期
+- Startup Scripts 在新建与恢复场景下行为一致
+- 性能与调试面板可用于定位问题
