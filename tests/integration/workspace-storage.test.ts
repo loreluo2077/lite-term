@@ -77,6 +77,17 @@ function makePluginSnapshot(id: string, tabId: string): WorkspaceSnapshot {
             content: "# persisted"
           }
         },
+        widget: {
+          kind: "plugin.view",
+          input: {
+            pluginId: "builtin.workspace",
+            viewId: "widget.markdown",
+            state: {
+              source: "inline",
+              content: "# persisted"
+            }
+          }
+        },
         restorePolicy: "manual"
       }
     ]
@@ -125,6 +136,54 @@ test("workspace storage: save/load/list/delete/default", async () => {
     const loadedPlugin = await loadWorkspaceSnapshot(tempRoot, "study");
     assert.equal(loadedPlugin.tabs[0]?.tabKind, "plugin.view");
     assert.deepEqual(loadedPlugin.tabs[0]?.input, pluginWorkspace.tabs[0]?.input);
+    assert.deepEqual(loadedPlugin.tabs[0]?.widget, pluginWorkspace.tabs[0]?.widget);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("workspace storage: getDefault returns null when there is no open workspace", async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "localterm-workspace-empty-"));
+  try {
+    const defaultWorkspace = await getDefaultWorkspaceSnapshot(tempRoot);
+    assert.equal(defaultWorkspace.workspace, null);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("workspace storage: getDefault skips broken snapshot and returns next open workspace", async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "localterm-workspace-broken-"));
+  try {
+    const first = makeSnapshot("ws-first", "tab-1");
+    const second = makeSnapshot("ws-second", "tab-2");
+    await saveWorkspaceSnapshot(tempRoot, first);
+    await saveWorkspaceSnapshot(tempRoot, second);
+
+    const brokenSnapshotPath = path.join(
+      tempRoot,
+      "workspace-store",
+      "workspaces",
+      "ws-first.json"
+    );
+    await fs.rm(brokenSnapshotPath, { force: true });
+
+    const defaultWorkspace = await getDefaultWorkspaceSnapshot(tempRoot);
+    assert.ok(defaultWorkspace.workspace);
+    assert.equal(defaultWorkspace.workspace?.layout.id, "ws-second");
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("workspace storage: rejects unsafe workspace id path traversal", async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "localterm-workspace-unsafe-"));
+  try {
+    const unsafeSnapshot = makeSnapshot("../unsafe", "tab-unsafe");
+    await assert.rejects(
+      () => saveWorkspaceSnapshot(tempRoot, unsafeSnapshot),
+      /invalid workspace id/
+    );
   } finally {
     await fs.rm(tempRoot, { recursive: true, force: true });
   }

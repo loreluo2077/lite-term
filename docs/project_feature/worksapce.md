@@ -1,127 +1,110 @@
 ## Workspace 功能说明
 
-> 文件名当前为 `worksapce.md`（拼写与代码无关，仅文档文件名历史原因）。
+> 文件名当前为 `worksapce.md`（历史拼写，后续可再统一为 `workspace.md`）。
 
 ## 1. 核心概念
 
-Workspace 是一份可持久化的工作快照，包含两部分：
+Workspace 是可持久化的协作快照，包含：
 
-- `layout`: pane 树结构、activePane、基础元信息
-- `tabs`: tab 描述（tabKind、title、input、restorePolicy）
+- `layout`: Panel/Pane 树与激活信息
+- `tabs`: Tab 容器描述
 
-对应结构：
+当前 Tab 描述采用“兼容迁移”结构：
 
-- `WorkspaceLayout` / `WorkspaceSnapshot`
-- schemaVersion 当前为 `2`
+- 主语义: `widget.kind + widget.input`
+- 兼容字段: `tabKind + input`
 
 ## 2. 本地存储模型
 
-桌面端存储目录（Electron `userData`）：
+存储目录（Electron `userData`）：
 
-- `workspace-store/index.json`: workspace 元信息索引
-- `workspace-store/workspaces/<workspaceId>.json`: 单个 workspace 快照
-
-`index.json` 维护：
-
-- `id`
-- `name`
-- `lastAccessed`
-- `isClosed`（软关闭标记）
+- `workspace-store/index.json`: workspace 索引（id/name/lastAccessed/isClosed）
+- `workspace-store/workspaces/<workspaceId>.json`: workspace snapshot
 
 ## 3. 已实现 workspace 操作
 
 ### 3.1 创建
 
-- 支持新建空 workspace
-- 新建后立即切换并持久化
-- 保留当前 workspace 运行态（热切换）
+- 新建空 workspace
+- 立即切换并保存
+- 保持其他 workspace 运行态（热切换）
 
 ### 3.2 切换（Hot Switch）
 
-- 切换前自动保存当前活跃 workspace（若可持久化）
-- 切换时默认不 kill 现有会话
-- 当前 workspace 外的 tab 作为 orphan 保留在隐藏容器中，连接不断开
+- 切换前自动保存当前 workspace（可持久化时）
+- 默认不 kill 现有 terminal session
+- 不在当前布局中的 tab 以 orphan 形式隐藏保活
 
 ### 3.3 重命名 / Save As
 
 - 支持重命名当前或历史 workspace
-- 支持 Save As 生成新 workspace（新 id + 新 name）
-- Save As 采用热切换方式，保留正在运行的会话
+- 支持 Save As 生成新 workspace 快照
 
-### 3.4 关闭与历史
+### 3.4 关闭与历史重开
 
-- `close` 是软关闭: 快照仍在，侧边栏移出活动列表
-- 可从 “Open Workspace” 弹窗重新打开历史 workspace
-- 若关闭当前 workspace 且无其他打开项，进入临时空 workspace
+- `close` 为软关闭（不删快照）
+- 可从历史列表重开
+- 关闭最后一个活跃 workspace 时进入临时空 workspace
 
 ### 3.5 删除
 
 - 存在 `workspace:delete` IPC 与底层实现
-- 当前 UI 主要使用 `close` 流程，delete 可用于后续管理能力扩展
+- 当前 UI 主流程以 `close` 为主
 
 ## 4. 启动与恢复策略
 
 ### 4.1 应用启动（Cold Boot）
 
-- renderer 启动后读取默认 workspace
-
-按 tab `restorePolicy` 决定恢复方式：
-
-- `recreate`: 重建会话（例如 terminal.local）
-- `manual`: 仅恢复描述，不自动重建运行态
+- 启动时读取默认 workspace 快照
+- 按 `restorePolicy` 恢复运行态：
+- `recreate`: 重建 terminal session
+- `manual`: 仅恢复 tab/widget 描述
 
 ### 4.2 自动保存
 
-- workspace/tabs 改动后防抖自动保存（500ms）
-- 仅对“未关闭”的 workspace 自动保存
+- workspace/tabs 变更后 500ms 防抖自动保存
+- 仅对未关闭 workspace 生效
 
-## 5. 顺序与默认 workspace 规则
+## 5. 顺序与默认规则
 
-- workspace 顺序按首次创建顺序追加
-- 保存已有 workspace 不改变顺序，仅更新时间戳
-- 默认 workspace 优先返回“第一个可加载且未关闭”的条目
+- workspace 按首次创建顺序追加
+- 更新已有 workspace 不改变顺序，仅更新访问时间
+- 默认 workspace 为第一个可加载且未关闭项
 
 ## 6. 安全与一致性
 
-- workspaceId 会做路径安全校验（禁止 `..` 和路径分隔符）
-- 索引与快照写入采用原子写（临时文件 + rename）
-- schema 校验由 `@localterm/shared` 提供，防止非法结构入库
+- workspaceId 做路径安全校验（禁止 `..` 与路径分隔符）
+- 索引与快照采用原子写（tmp + rename）
+- schema 校验防止非法结构落盘
 
 ## 7. 自动化测试
 
-- 已覆盖（集成测试）:
 - `tests/integration/workspace-schema.test.ts`
-- 覆盖 workspace snapshot schema 与关键约束
+- 覆盖 snapshot 结构约束与 `tab.widget` 兼容
 - `tests/integration/workspace-storage.test.ts`
 - 覆盖 save/load/list/close/delete/default 流程
 - `tests/integration/workspace-order.test.ts`
-- 覆盖 workspace 顺序稳定与追加规则
+- 覆盖顺序稳定与追加规则
 - 执行命令:
 - `pnpm test`
 - `pnpm verify:quick`
 
 ## 8. UI测试
 
-- 基础流程:
-- 新建 workspace，确认进入空布局并可创建 tab
-- 在多个 workspace 间切换，确认列表状态与当前激活项正确
-- 管理流程:
-- 对 workspace 执行 Rename、Save As、Close、历史重开，确认行为一致
-- 关闭当前 workspace 后，应正确切换到下一个可用 workspace 或临时空 workspace
-- 数据恢复:
-- 修改布局与 tab 后重启应用，确认快照恢复
-- 对于 `restorePolicy` 不同的 tab，确认恢复行为符合定义
+- 新建 workspace，确认可创建 tab/widget
+- 多 workspace 切换，确认激活态与列表状态正确
+- Rename / Save As / Close / 历史重开行为一致
+- 重启后快照恢复正确，restorePolicy 行为符合预期
 
 ## 9. 人类验收
 
-- 验收标准:
-- workspace 切换稳定，无错误 workspace 被覆盖
-- 顺序、名称、关闭状态与 UI 展示一致
+- workspace 切换稳定，无错误覆盖
 - 热切换不丢运行态，冷启动按策略恢复
-- 自动保存生效，异常退出后仍可恢复到最近可用状态
+- 自动保存生效，异常退出后可恢复最近可用状态
+- 旧快照（无 widget 字段）可继续加载
 
 ## 10. 当前限制
 
-- workspace 图标/排序策略较基础（当前按索引顺序显示）
-- 关闭/删除的权限与确认流程可进一步细化
-- 目前未提供“跨设备同步”，仅本地持久化
+- 图标与排序策略较基础（当前按索引顺序）
+- 关闭/删除确认流可继续优化
+- 暂无跨设备同步，仅本地持久化

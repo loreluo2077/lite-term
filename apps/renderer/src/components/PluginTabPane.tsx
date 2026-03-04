@@ -21,7 +21,7 @@ export function PluginTabPane({
   onUpdateTitle,
   onOpenPluginView
 }: Props) {
-  const pluginInput = parsePluginViewInput(tab.input);
+  const pluginInput = parsePluginViewInput(tab.widget.input);
   if (!pluginInput) {
     return (
       <div className="grid h-full place-items-center rounded-lg border border-red-900/50 bg-zinc-950 p-4 text-sm text-red-200">

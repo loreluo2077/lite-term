@@ -2,9 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { PaneNode } from "@localterm/shared";
 import {
+  activateTabInPane,
+  addTabToPane,
   closePaneNode,
+  findPaneIdByTabId,
+  getLeafPaneById,
   listLeafPaneIds,
   moveTabAcrossPanes,
+  removeTabFromPane,
   splitPaneNode
 } from "../../apps/renderer/src/lib/workspace/pane-tree";
 
@@ -91,4 +96,99 @@ test("moveTabAcrossPanes moves tab from source leaf to target leaf", () => {
   assert.deepEqual(source.tabIds, ["tab-b"]);
   assert.deepEqual(target.tabIds, ["tab-a"]);
   assert.equal(target.activeTabId, "tab-a");
+});
+
+test("splitPaneNode throws when target pane does not exist", () => {
+  const root: PaneNode = {
+    id: "pane-1",
+    type: "leaf",
+    tabIds: []
+  };
+  assert.throws(
+    () => splitPaneNode(root, "missing-pane", "horizontal"),
+    /pane not found/
+  );
+});
+
+test("closePaneNode throws when trying to close the last pane", () => {
+  const root: PaneNode = {
+    id: "pane-1",
+    type: "leaf",
+    tabIds: ["tab-1"],
+    activeTabId: "tab-1"
+  };
+  assert.throws(() => closePaneNode(root, "pane-1"), /cannot close the last pane/);
+});
+
+test("addTabToPane appends tab and sets it active, then removeTabFromPane updates active tab", () => {
+  const root: PaneNode = {
+    id: "pane-1",
+    type: "leaf",
+    tabIds: ["tab-1"],
+    activeTabId: "tab-1"
+  };
+
+  const withTab2 = addTabToPane(root, "pane-1", "tab-2");
+  if (withTab2.type !== "leaf") {
+    throw new Error("expected leaf root");
+  }
+  assert.deepEqual(withTab2.tabIds, ["tab-1", "tab-2"]);
+  assert.equal(withTab2.activeTabId, "tab-2");
+
+  const withoutTab2 = removeTabFromPane(withTab2, "tab-2");
+  if (withoutTab2.type !== "leaf") {
+    throw new Error("expected leaf root");
+  }
+  assert.deepEqual(withoutTab2.tabIds, ["tab-1"]);
+  assert.equal(withoutTab2.activeTabId, "tab-1");
+});
+
+test("activateTabInPane only activates tab that exists in pane", () => {
+  const root: PaneNode = {
+    id: "pane-1",
+    type: "leaf",
+    tabIds: ["tab-1", "tab-2"],
+    activeTabId: "tab-1"
+  };
+
+  const unchanged = activateTabInPane(root, "pane-1", "tab-missing");
+  if (unchanged.type !== "leaf") {
+    throw new Error("expected leaf root");
+  }
+  assert.equal(unchanged.activeTabId, "tab-1");
+
+  const changed = activateTabInPane(root, "pane-1", "tab-2");
+  if (changed.type !== "leaf") {
+    throw new Error("expected leaf root");
+  }
+  assert.equal(changed.activeTabId, "tab-2");
+});
+
+test("findPaneIdByTabId and getLeafPaneById locate expected pane", () => {
+  const root: PaneNode = {
+    id: "split-1",
+    type: "split",
+    direction: "horizontal",
+    sizes: [0.5, 0.5],
+    children: [
+      {
+        id: "pane-1",
+        type: "leaf",
+        tabIds: ["tab-a"],
+        activeTabId: "tab-a"
+      },
+      {
+        id: "pane-2",
+        type: "leaf",
+        tabIds: ["tab-b"],
+        activeTabId: "tab-b"
+      }
+    ]
+  };
+
+  assert.equal(findPaneIdByTabId(root, "tab-b"), "pane-2");
+  assert.equal(findPaneIdByTabId(root, "tab-x"), null);
+  const leaf = getLeafPaneById(root, "pane-2");
+  assert.ok(leaf);
+  assert.deepEqual(leaf.tabIds, ["tab-b"]);
 });

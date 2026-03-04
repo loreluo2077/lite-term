@@ -4,15 +4,36 @@
 import { atom } from "jotai";
 import type { CreateLocalSessionResponse, SessionStatus, TabKind } from "@localterm/shared";
 
-export type TabRecord = {
+export type TabLifecycleStatus = "idle" | SessionStatus;
+
+export type TabWidget = {
+  kind: TabKind;
+  input: Record<string, unknown>;
+};
+
+type BaseTabRecord = {
   id: string;
   tabKind: TabKind;
+  widget: TabWidget;
   title: string;
+  // Legacy compatibility field. Keep in sync with widget.input during migration.
   input: Record<string, unknown>;
-  session?: CreateLocalSessionResponse | undefined;
-  status: "idle" | SessionStatus;
+  status: TabLifecycleStatus;
   wsConnected: boolean;
 };
+
+// Session runtime is scoped to local terminal widget tabs only.
+export type LocalTerminalTabRecord = BaseTabRecord & {
+  tabKind: "terminal.local";
+  session?: CreateLocalSessionResponse | undefined;
+};
+
+export type NonTerminalTabRecord = BaseTabRecord & {
+  tabKind: Exclude<TabKind, "terminal.local">;
+  session?: undefined;
+};
+
+export type TabRecord = LocalTerminalTabRecord | NonTerminalTabRecord;
 
 export const tabsAtom = atom<TabRecord[]>([]);
 export const activeTabIdAtom = atom<string>("");

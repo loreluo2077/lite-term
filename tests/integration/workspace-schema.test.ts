@@ -124,6 +124,41 @@ test("workspace snapshot schema accepts terminal startup scripts payload", () =>
   assert.equal(parsed.tabs[0].input.startupScripts[0]?.command, "echo ready");
 });
 
+test("workspace snapshot schema accepts tab.widget payload (tab shell + widget content)", () => {
+  const parsed = workspaceSnapshotSchema.parse({
+    layout: {
+      schemaVersion: 2,
+      id: "widgetized",
+      name: "widgetized",
+      activePaneId: "pane-1",
+      createdAt: 1,
+      updatedAt: 1,
+      root: {
+        id: "pane-1",
+        type: "leaf",
+        tabIds: ["tab-1"],
+        activeTabId: "tab-1"
+      }
+    },
+    tabs: [
+      {
+        id: "tab-1",
+        tabKind: "terminal.local",
+        title: "Local 1",
+        input: { cols: 120, rows: 30 },
+        widget: {
+          kind: "terminal.local",
+          input: { cols: 120, rows: 30 }
+        },
+        restorePolicy: "recreate"
+      }
+    ]
+  });
+
+  if (parsed.tabs[0]?.tabKind !== "terminal.local") return;
+  assert.equal(parsed.tabs[0].widget?.kind, "terminal.local");
+});
+
 test("workspace snapshot schema rejects split sizes that do not sum to 1", () => {
   assert.throws(
     () =>
@@ -158,6 +193,80 @@ test("workspace snapshot schema rejects split sizes that do not sum to 1", () =>
       }),
     /sizes must sum to 1/
   );
+});
+
+test("workspace snapshot schema rejects mismatched widget kind and tabKind", () => {
+  assert.throws(
+    () =>
+      workspaceSnapshotSchema.parse({
+        layout: {
+          schemaVersion: 2,
+          id: "bad-widget-kind",
+          name: "bad-widget-kind",
+          activePaneId: "pane-1",
+          createdAt: 1,
+          updatedAt: 1,
+          root: {
+            id: "pane-1",
+            type: "leaf",
+            tabIds: ["tab-1"],
+            activeTabId: "tab-1"
+          }
+        },
+        tabs: [
+          {
+            id: "tab-1",
+            tabKind: "terminal.local",
+            title: "Local 1",
+            input: { cols: 120, rows: 30 },
+            widget: {
+              kind: "plugin.view",
+              input: {
+                pluginId: "builtin.workspace",
+                viewId: "widget.markdown",
+                state: {}
+              }
+            },
+            restorePolicy: "recreate"
+          }
+        ]
+      }),
+    /Invalid literal value/
+  );
+});
+
+test("workspace snapshot schema fills default plugin.view state when omitted", () => {
+  const parsed = workspaceSnapshotSchema.parse({
+    layout: {
+      schemaVersion: 2,
+      id: "plugin-default-state",
+      name: "plugin-default-state",
+      activePaneId: "pane-1",
+      createdAt: 1,
+      updatedAt: 1,
+      root: {
+        id: "pane-1",
+        type: "leaf",
+        tabIds: ["tab-1"],
+        activeTabId: "tab-1"
+      }
+    },
+    tabs: [
+      {
+        id: "tab-1",
+        tabKind: "plugin.view",
+        title: "Markdown",
+        input: {
+          pluginId: "builtin.workspace",
+          viewId: "widget.markdown"
+        },
+        restorePolicy: "manual"
+      }
+    ]
+  });
+
+  if (parsed.tabs[0]?.tabKind !== "plugin.view") return;
+  assert.deepEqual(parsed.tabs[0].input.state, {});
 });
 
 test("plugin rpc response requires error when ok=false", () => {

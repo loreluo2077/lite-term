@@ -27,40 +27,85 @@ export const pluginViewTabInputSchema = z.object({
   state: z.record(z.string(), z.unknown()).default({})
 });
 
+const terminalLocalWidgetSchema = z.object({
+  kind: z.literal("terminal.local"),
+  input: createLocalSessionRequestSchema.omit({ sessionType: true })
+});
+
+const terminalSshWidgetSchema = z.object({
+  kind: z.literal("terminal.ssh"),
+  input: genericInputSchema
+});
+
+const webPageWidgetSchema = z.object({
+  kind: z.literal("web.page"),
+  input: genericInputSchema
+});
+
+const webBrowserWidgetSchema = z.object({
+  kind: z.literal("web.browser"),
+  input: genericInputSchema
+});
+
+const widgetReactWidgetSchema = z.object({
+  kind: z.literal("widget.react"),
+  input: genericInputSchema
+});
+
+const pluginViewWidgetSchema = z.object({
+  kind: z.literal("plugin.view"),
+  input: pluginViewTabInputSchema
+});
+
+export const widgetDescriptorSchema = z.discriminatedUnion("kind", [
+  terminalLocalWidgetSchema,
+  terminalSshWidgetSchema,
+  webPageWidgetSchema,
+  webBrowserWidgetSchema,
+  widgetReactWidgetSchema,
+  pluginViewWidgetSchema
+]);
+
 const terminalLocalTabDescriptorSchema = z.object({
   ...sharedDescriptorSchema,
   tabKind: z.literal("terminal.local"),
-  input: createLocalSessionRequestSchema.omit({ sessionType: true })
+  input: createLocalSessionRequestSchema.omit({ sessionType: true }),
+  widget: terminalLocalWidgetSchema.optional()
 });
 
 const terminalSshTabDescriptorSchema = z.object({
   ...sharedDescriptorSchema,
   tabKind: z.literal("terminal.ssh"),
-  input: genericInputSchema
+  input: genericInputSchema,
+  widget: terminalSshWidgetSchema.optional()
 });
 
 const webPageTabDescriptorSchema = z.object({
   ...sharedDescriptorSchema,
   tabKind: z.literal("web.page"),
-  input: genericInputSchema
+  input: genericInputSchema,
+  widget: webPageWidgetSchema.optional()
 });
 
 const webBrowserTabDescriptorSchema = z.object({
   ...sharedDescriptorSchema,
   tabKind: z.literal("web.browser"),
-  input: genericInputSchema
+  input: genericInputSchema,
+  widget: webBrowserWidgetSchema.optional()
 });
 
 const widgetReactTabDescriptorSchema = z.object({
   ...sharedDescriptorSchema,
   tabKind: z.literal("widget.react"),
-  input: genericInputSchema
+  input: genericInputSchema,
+  widget: widgetReactWidgetSchema.optional()
 });
 
 const pluginViewTabDescriptorSchema = z.object({
   ...sharedDescriptorSchema,
   tabKind: z.literal("plugin.view"),
-  input: pluginViewTabInputSchema
+  input: pluginViewTabInputSchema,
+  widget: pluginViewWidgetSchema.optional()
 });
 
 export const tabDescriptorSchema = z.discriminatedUnion("tabKind", [
@@ -75,4 +120,5 @@ export const tabDescriptorSchema = z.discriminatedUnion("tabKind", [
 export type TabKind = z.infer<typeof tabKindSchema>;
 export type TabRestorePolicy = z.infer<typeof tabRestorePolicySchema>;
 export type PluginViewTabInput = z.infer<typeof pluginViewTabInputSchema>;
+export type WidgetDescriptor = z.infer<typeof widgetDescriptorSchema>;
 export type TabDescriptor = z.infer<typeof tabDescriptorSchema>;

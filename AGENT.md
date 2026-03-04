@@ -9,6 +9,13 @@
 - 先理解再修改
 - 文档和代码保持一致
 
+核心模型约束（不可混淆）：
+
+- Workspace 放 Panel
+- Panel 放 Tab
+- Tab 放 Widget
+- Session 仅属于 local terminal widget
+
 ## 2. 开工前必读顺序
 
 1. `docs/project_manual.md`（产品说明书）
@@ -32,10 +39,11 @@
 
 1. 盘点上下文：读相关文档、代码、测试
 2. 明确影响面：列出要改的文件
-3. 实施修改：只改与任务直接相关文件
-4. 本地校验：至少执行相关检查或测试
-5. 回写文档：若行为变化，更新对应文档
-6. 输出结果：说明改了什么、为什么、如何验证
+3. 先写测试计划：本次改动对应哪些 integration / e2e 场景
+4. 实施修改：只改与任务直接相关文件
+5. 本地校验：至少执行相关检查或测试
+6. 回写文档：若行为变化，更新对应文档
+7. 输出结果：说明改了什么、为什么、如何验证
 
 ## 5. 修改原则
 
@@ -56,23 +64,41 @@
 
 禁止把“计划中”写成“已实现”。
 
-## 7. 常用命令
+## 7. 测试与质量门禁（强制）
+
+- 新功能默认需要补测试，不能只改实现不补验证
+- 至少包含 1 条 integration（逻辑/状态/存储）
+- 至少包含 1 条 e2e（真实用户路径）
+- 提交前至少跑 `pnpm verify:quick`
+- 涉及 UI 交互、workspace/panel/tab/widget/session 链路时，额外跑 `pnpm test:e2e`
+- 最终交付建议跑 `pnpm verify:ci`
+
+E2E 约定：
+
+- 复用 `tests/e2e/electron-smoke.spec.mjs` 的 helper 模式
+- 保持测试隔离（独立 HOME + userData）
+- 优先断言用户可见行为，不断言实现细节
+- 定位器优先 role/title/text，避免脆弱 selector
+
+## 8. 常用命令
 
 ```bash
 pnpm dev
 pnpm typecheck
 pnpm test
+pnpm test:e2e
 pnpm verify:quick
+pnpm verify:ci
 ```
 
-## 8. 交付格式建议
+## 9. 交付格式建议
 
 - 变更文件清单
 - 关键实现点
 - 验证结果（执行了哪些命令）
 - 未完成项或风险（如有）
 
-## 9. todo
+## 10. todo
 
 当前正在完成的需求内容:
 

@@ -11,6 +11,7 @@
     ]
   },
   "devDependencies": {
+    "@playwright/test": "^1.54.2",
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
@@ -28,10 +29,12 @@
     "lint": "echo \"TODO: wire workspace lint\"",
     "test": "pnpm test:integration",
     "test:integration": "tsx --test tests/integration/*.test.ts",
-    "test:e2e": "echo \"TODO: wire Electron E2E tests\"",
+    "test:e2e": "pnpm --filter @localterm/renderer build && playwright test tests/e2e/electron-smoke.spec.mjs",
+    "test:e2e:review": "pnpm test:e2e",
+    "test:e2e:report": "playwright show-report output/playwright/report",
     "verify:quick": "pnpm typecheck && pnpm test:integration",
     "acceptance:auto": "pnpm verify:quick && pnpm --filter @localterm/renderer build && pnpm debug:sessions",
-    "verify:ci": "echo \"TODO: CI full verification pipeline\"",
+    "verify:ci": "pnpm verify:quick && pnpm test:e2e",
     "debug:sessions": "tsx scripts/debug-sessions.ts",
     "kill:orphans": "tsx scripts/kill-orphans.ts",
     "perf:stress": "tsx scripts/perf-session-stress.ts"

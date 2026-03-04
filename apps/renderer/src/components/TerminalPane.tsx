@@ -6,7 +6,7 @@ import type { FitAddon } from "@xterm/addon-fit";
 import type { SearchAddon } from "@xterm/addon-search";
 import type { Terminal } from "@xterm/xterm";
 import { useEffect, useRef, useState } from "react";
-import type { TabRecord } from "../lib/atoms/session";
+import type { LocalTerminalTabRecord, TabLifecycleStatus } from "../lib/atoms/session";
 import { connectSessionWebSocket } from "../lib/session/connect-session-ws";
 import {
   loadCanvasAddon,
@@ -20,12 +20,12 @@ import {
 } from "../lib/xterm/xterm-loader";
 
 type Props = {
-  tab: TabRecord;
+  tab: LocalTerminalTabRecord;
   isActive: boolean;
   onTraffic: (tabId: string, bytes: number, lines: number) => void;
   onCommandChannel: (tabId: string, send: ((text: string) => void) | null) => void;
   onSessionReady: (tabId: string) => void;
-  onStatus: (tabId: string, status: TabRecord["status"]) => void;
+  onStatus: (tabId: string, status: TabLifecycleStatus) => void;
   onWsConnected: (tabId: string, connected: boolean) => void;
 };
 

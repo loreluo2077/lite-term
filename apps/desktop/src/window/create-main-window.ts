@@ -40,7 +40,7 @@ export async function createMainWindow() {
   const rendererUrl = process.env.LOCALTERM_RENDERER_URL;
   if (rendererUrl) {
     await loadUrlWithRetry(win, rendererUrl);
-    win.webContents.openDevTools({ mode: "detach" });
+   // win.webContents.openDevTools({ mode: "detach" });
   } else {
     const indexHtml = path.resolve(__dirname, "../../../renderer/dist/index.html");
     await win.loadFile(indexHtml);

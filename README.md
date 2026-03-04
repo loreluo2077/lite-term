@@ -16,4 +16,34 @@ Lo-fi 代表我期望的那个创作氛围,投入,放松
 
 Lo-Fi Room 是一个 Electron + React 的本地应用，核心目标是把多终端、多工作区、多面板协作放在一个统一界面里，降低在不同 CLI/窗口间切换的成本。
 
+当前模型：
+
+- Workspace 放 Panel
+- Panel 放 Tab
+- Tab 放 Widget
+- Session 仅属于 local terminal widget
+
 如果你是 AI Agent，请先阅读 `AGENT.md`，那里定义了任务执行流程和文档/代码更新规则。
+
+## 工程实践：新功能默认带测试
+
+从本次迭代开始，新增功能不再只交付代码，默认需要同时交付自动化测试：
+
+- 单元/集成测试：验证 schema、状态流、存储、核心逻辑
+- 端到端测试（E2E）：验证用户真实操作路径（Electron UI + IPC + 会话链路）
+- 文档同步：把测试覆盖点回写到对应功能文档
+
+建议执行顺序：
+
+```bash
+pnpm verify:quick
+pnpm test:e2e
+pnpm verify:ci
+```
+
+当前质量门禁：
+
+- `verify:quick` = `typecheck + integration`
+- `verify:ci` = `verify:quick + e2e`
+
+详细流程见：`docs/testing_playbook.md`
