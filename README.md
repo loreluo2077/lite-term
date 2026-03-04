@@ -25,6 +25,17 @@ Lo-Fi Room 是一个 Electron + React 的本地应用，核心目标是把多终
 
 如果你是 AI Agent，请先阅读 `AGENT.md`，那里定义了任务执行流程和文档/代码更新规则。
 
+## 代码结构（命名收敛）
+
+- `apps/renderer/src/lib/widgets/state.ts`: widget 运行态（tab 容器 + widget 内容 + terminal session 归属）
+- `apps/renderer/src/lib/widgets/drivers/*`: widget driver（local terminal / plugin view / noop）
+- `apps/renderer/src/components/widgets/*`: widget 视图组件
+- 兼容层仍保留：
+- `apps/renderer/src/lib/atoms/session.ts`
+- `apps/renderer/src/lib/tab-drivers/*`
+- `apps/renderer/src/components/TerminalPane.tsx`
+- `apps/renderer/src/components/PluginTabPane.tsx`
+
 ## 工程实践：新功能默认带测试
 
 从本次迭代开始，新增功能不再只交付代码，默认需要同时交付自动化测试：

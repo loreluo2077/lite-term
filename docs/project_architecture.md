@@ -28,6 +28,8 @@
 
 - `apps/desktop`: Electron 主进程、preload、IPC、workspace 存储
 - `apps/renderer`: UI、pane-tree、tab 容器、widget 渲染、会话连接
+- `apps/renderer/src/lib/widgets`: widget runtime state、widget drivers
+- `apps/renderer/src/components/widgets`: widget 组件（local terminal / plugin view）
 
 ### 3.2 核心包层
 
@@ -51,7 +53,7 @@
 1. renderer 为 terminal widget 调用 `session:createLocal`
 2. control-plane 分配端口并启动 session-worker
 3. worker 启动 pty + WS server
-4. TerminalPane 连接 `ws://127.0.0.1:<port>`，进入双向流
+4. LocalTerminalWidgetPane 连接 `ws://127.0.0.1:<port>`，进入双向流
 
 ### 4.3 Workspace 持久化
 

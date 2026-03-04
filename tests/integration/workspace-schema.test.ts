@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  pluginManifestSchema,
   pluginRpcResponseSchema,
   workspaceSnapshotSchema
 } from "@localterm/shared";
@@ -278,4 +279,37 @@ test("plugin rpc response requires error when ok=false", () => {
       }),
     /error is required/
   );
+});
+
+test("plugin manifest derives widgetKinds from tabKinds for backward compatibility", () => {
+  const parsed = pluginManifestSchema.parse({
+    id: "plugin.compat",
+    version: "0.1.0",
+    entry: "renderer://compat",
+    contributes: {
+      tabKinds: ["plugin.view:file.browser"],
+      commands: [],
+      widgets: ["file.browser"]
+    }
+  });
+
+  assert.deepEqual(parsed.contributes.tabKinds, ["plugin.view:file.browser"]);
+  assert.deepEqual(parsed.contributes.widgetKinds, ["plugin.view:file.browser"]);
+});
+
+test("plugin manifest keeps explicit widgetKinds when provided", () => {
+  const parsed = pluginManifestSchema.parse({
+    id: "plugin.explicit",
+    version: "0.1.0",
+    entry: "renderer://explicit",
+    contributes: {
+      tabKinds: ["legacy.tab.kind"],
+      widgetKinds: ["plugin.view:widget.markdown"],
+      commands: [],
+      widgets: ["widget.markdown"]
+    }
+  });
+
+  assert.deepEqual(parsed.contributes.tabKinds, ["legacy.tab.kind"]);
+  assert.deepEqual(parsed.contributes.widgetKinds, ["plugin.view:widget.markdown"]);
 });

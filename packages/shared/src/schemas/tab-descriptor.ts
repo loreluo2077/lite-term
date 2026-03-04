@@ -1,14 +1,19 @@
 import { z } from "zod";
 import { createLocalSessionRequestSchema } from "./control-plane";
+import {
+  pluginViewWidgetInputSchema,
+  pluginViewWidgetSchema,
+  terminalLocalWidgetSchema,
+  terminalSshWidgetSchema,
+  webPageWidgetSchema,
+  webBrowserWidgetSchema,
+  widgetKindSchema,
+  widgetReactWidgetSchema,
+  type PluginViewWidgetInput,
+  type WidgetDescriptor as SharedWidgetDescriptor
+} from "./widget-descriptor";
 
-export const tabKindSchema = z.enum([
-  "terminal.local",
-  "terminal.ssh",
-  "web.page",
-  "web.browser",
-  "widget.react",
-  "plugin.view"
-]);
+export const tabKindSchema = widgetKindSchema;
 
 export const tabRestorePolicySchema = z.enum(["recreate", "manual"]);
 
@@ -21,50 +26,7 @@ const sharedDescriptorSchema = {
 
 const genericInputSchema = z.record(z.string(), z.unknown());
 
-export const pluginViewTabInputSchema = z.object({
-  pluginId: z.string().min(1),
-  viewId: z.string().min(1),
-  state: z.record(z.string(), z.unknown()).default({})
-});
-
-const terminalLocalWidgetSchema = z.object({
-  kind: z.literal("terminal.local"),
-  input: createLocalSessionRequestSchema.omit({ sessionType: true })
-});
-
-const terminalSshWidgetSchema = z.object({
-  kind: z.literal("terminal.ssh"),
-  input: genericInputSchema
-});
-
-const webPageWidgetSchema = z.object({
-  kind: z.literal("web.page"),
-  input: genericInputSchema
-});
-
-const webBrowserWidgetSchema = z.object({
-  kind: z.literal("web.browser"),
-  input: genericInputSchema
-});
-
-const widgetReactWidgetSchema = z.object({
-  kind: z.literal("widget.react"),
-  input: genericInputSchema
-});
-
-const pluginViewWidgetSchema = z.object({
-  kind: z.literal("plugin.view"),
-  input: pluginViewTabInputSchema
-});
-
-export const widgetDescriptorSchema = z.discriminatedUnion("kind", [
-  terminalLocalWidgetSchema,
-  terminalSshWidgetSchema,
-  webPageWidgetSchema,
-  webBrowserWidgetSchema,
-  widgetReactWidgetSchema,
-  pluginViewWidgetSchema
-]);
+export const pluginViewTabInputSchema = pluginViewWidgetInputSchema;
 
 const terminalLocalTabDescriptorSchema = z.object({
   ...sharedDescriptorSchema,
@@ -119,6 +81,6 @@ export const tabDescriptorSchema = z.discriminatedUnion("tabKind", [
 
 export type TabKind = z.infer<typeof tabKindSchema>;
 export type TabRestorePolicy = z.infer<typeof tabRestorePolicySchema>;
-export type PluginViewTabInput = z.infer<typeof pluginViewTabInputSchema>;
-export type WidgetDescriptor = z.infer<typeof widgetDescriptorSchema>;
+export type PluginViewTabInput = PluginViewWidgetInput;
+export type TabWidgetDescriptor = SharedWidgetDescriptor;
 export type TabDescriptor = z.infer<typeof tabDescriptorSchema>;

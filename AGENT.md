@@ -20,7 +20,7 @@
 
 1. `docs/project_manual.md`（产品说明书）
 2. `docs/project_architecture.md`（架构和数据流）
-3. 按任务类型阅读详细的功能文档（`docs/project_feature/worksapce.md`、`docs/project_feature/panel.md`、`docs/project_feature/session.md`）
+3. 按任务类型阅读详细的功能文档（`docs/project_feature/workspace.md`、`docs/project_feature/panel.md`、`docs/project_feature/session.md`）
 4. 再读取相关源码与测试
 
 如果文档与代码冲突，以代码现状为准，并在交付时明确指出差异;
@@ -28,7 +28,9 @@
 ## 3. 仓库关键路径
 
 - `apps/desktop`: Electron 主进程、IPC、workspace 存储
-- `apps/renderer`: UI、pane-tree、tab 驱动、插件视图
+- `apps/renderer`: UI、pane-tree、tab 容器、widget 渲染
+- `apps/renderer/src/lib/widgets`: widget runtime state + widget drivers
+- `apps/renderer/src/components/widgets`: widget 组件（local terminal / plugin view）
 - `packages/control-plane`: 会话生命周期控制
 - `packages/session-worker`: 每会话 worker 进程入口
 - `packages/session-local`: 本地 pty 适配器

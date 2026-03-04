@@ -4,6 +4,7 @@ export * from "./schemas/plugin-rpc";
 export * from "./schemas/session-events";
 export * from "./schemas/system-metrics";
 export * from "./schemas/tab-descriptor";
+export * from "./schemas/widget-descriptor";
 export * from "./schemas/worker-ipc";
 export * from "./schemas/workspace";
 export * from "./constants/session";

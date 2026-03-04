@@ -1,7 +1,5 @@
 ## Workspace 功能说明
 
-> 文件名当前为 `worksapce.md`（历史拼写，后续可再统一为 `workspace.md`）。
-
 ## 1. 核心概念
 
 Workspace 是可持久化的协作快照，包含：

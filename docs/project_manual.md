@@ -59,7 +59,7 @@ workspace snapshot 当前采用迁移兼容方案：
 
 - 架构: `docs/project_architecture.md`
 - 功能:
-- `docs/project_feature/worksapce.md`
+- `docs/project_feature/workspace.md`
 - `docs/project_feature/panel.md`
 - `docs/project_feature/session.md`
 - 测试实践: `docs/testing_playbook.md`

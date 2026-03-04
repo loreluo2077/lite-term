@@ -19,10 +19,15 @@ export const pluginManifestSchema = z.object({
   contributes: z
     .object({
       tabKinds: z.array(z.string().min(1)).default([]),
+      widgetKinds: z.array(z.string().min(1)).optional(),
       commands: z.array(z.string().min(1)).default([]),
       widgets: z.array(z.string().min(1)).default([])
     })
-    .default({ tabKinds: [], commands: [], widgets: [] }),
+    .transform((value) => ({
+      ...value,
+      widgetKinds: value.widgetKinds ?? value.tabKinds
+    }))
+    .default({ tabKinds: [], commands: [], widgets: [], widgetKinds: [] }),
   permissions: z.array(pluginPermissionSchema).default([])
 });
 

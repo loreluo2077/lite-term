@@ -5,13 +5,13 @@
 import { useAtom } from "jotai";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  activeTabIdAtom,
-  tabsAtom,
-  type LocalTerminalTabRecord,
-  type TabRecord
-} from "../lib/atoms/session";
-import { PluginTabPane } from "../components/PluginTabPane";
-import { TerminalPane } from "../components/TerminalPane";
+  activeWidgetTabIdAtom as activeTabIdAtom,
+  isLocalTerminalWidgetTab,
+  widgetTabsAtom as tabsAtom,
+  type WidgetTabRecord
+} from "../lib/widgets/state";
+import { PluginWidgetPane } from "../components/widgets/PluginWidgetPane";
+import { LocalTerminalWidgetPane } from "../components/widgets/LocalTerminalWidgetPane";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,14 +22,14 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getTabDriver, type LocalTerminalDriverInput } from "../lib/tab-drivers";
+import { getWidgetDriver, type LocalTerminalWidgetInput } from "../lib/widgets/drivers";
 import type {
   LocalSessionStartupScript,
   PaneDirection,
   PaneNode,
-  TabKind,
   TabDescriptor,
   WidgetDescriptor,
+  WidgetKind,
   WorkspaceListResponse,
   WorkspaceSnapshot
 } from "@localterm/shared";
@@ -230,7 +230,7 @@ function dropPreviewOverlayClass(zone: DropPreviewZone) {
   return "absolute bottom-2 left-2 right-2 h-1/2 rounded-md border border-sky-400 bg-sky-400/10";
 }
 
-const DEFAULT_LOCAL_TERMINAL_INPUT: LocalTerminalDriverInput = {
+const DEFAULT_LOCAL_TERMINAL_INPUT: LocalTerminalWidgetInput = {
   cols: 120,
   rows: 30
 };
@@ -324,11 +324,7 @@ function normalizeDescriptorWidget(descriptor: TabDescriptor): WidgetDescriptor 
   } as WidgetDescriptor;
 }
 
-function isLocalTerminalTab(tab: TabRecord): tab is LocalTerminalTabRecord {
-  return tab.widget.kind === "terminal.local";
-}
-
-function toPersistedTabDescriptors(records: TabRecord[]): TabDescriptor[] {
+function toPersistedTabDescriptors(records: WidgetTabRecord[]): TabDescriptor[] {
   return records.map((record) => {
     const widget = record.widget;
     switch (widget.kind) {
@@ -337,10 +333,10 @@ function toPersistedTabDescriptors(records: TabRecord[]): TabDescriptor[] {
           id: record.id,
           tabKind: "terminal.local",
           title: record.title,
-          input: (widget.input as LocalTerminalDriverInput) ?? DEFAULT_LOCAL_TERMINAL_INPUT,
+          input: (widget.input as LocalTerminalWidgetInput) ?? DEFAULT_LOCAL_TERMINAL_INPUT,
           widget: {
             kind: "terminal.local",
-            input: (widget.input as LocalTerminalDriverInput) ?? DEFAULT_LOCAL_TERMINAL_INPUT
+            input: (widget.input as LocalTerminalWidgetInput) ?? DEFAULT_LOCAL_TERMINAL_INPUT
           },
           restorePolicy: "recreate"
         };
@@ -487,7 +483,7 @@ export function App() {
   const [dropPreview, setDropPreview] = useState<DropPreview>(null);
   const [tabContextMenu, setTabContextMenu] = useState<TabContextMenuState>(null);
   const tabCounterRef = useRef(0);
-  const tabsRef = useRef<TabRecord[]>([]);
+  const tabsRef = useRef<WidgetTabRecord[]>([]);
   const restoringWorkspaceRef = useRef(false);
   const commandChannelsRef = useRef<Map<string, (text: string) => void>>(new Map());
   const pendingCommandsRef = useRef<Map<string, string[]>>(new Map());
@@ -523,7 +519,7 @@ export function App() {
   const terminalStartupScriptsTargetTab = useMemo(() => {
     if (!terminalStartupScriptsTargetTabId) return null;
     const entry = tabs.find((tab) => tab.id === terminalStartupScriptsTargetTabId);
-    if (!entry || !isLocalTerminalTab(entry)) return null;
+    if (!entry || !isLocalTerminalWidgetTab(entry)) return null;
     return entry;
   }, [tabs, terminalStartupScriptsTargetTabId]);
 
@@ -534,7 +530,7 @@ export function App() {
     return leafPaneIds[0] ?? "pane-1";
   }, [leafPaneIds, workspace.activePaneId, workspace.root]);
 
-  const updateStatus = useCallback((tabId: string, status: TabRecord["status"]) => {
+  const updateStatus = useCallback((tabId: string, status: WidgetTabRecord["status"]) => {
     setTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, status } : t)));
   }, [setTabs]);
 
@@ -626,7 +622,7 @@ export function App() {
 
   const openTerminalStartupScriptsEditor = useCallback((tabId: string) => {
     const tab = tabsRef.current.find((entry) => entry.id === tabId);
-    if (!tab || !isLocalTerminalTab(tab)) return;
+    if (!tab || !isLocalTerminalWidgetTab(tab)) return;
     setTerminalStartupScriptsTargetTabId(tabId);
     setPendingTerminalCreation(null);
     setTerminalStartupScriptDrafts(parseStartupScriptDraftsFromInput(tab.widget.input));
@@ -638,8 +634,8 @@ export function App() {
     setTerminalStartupScriptDrafts([]);
   }, []);
 
-  const createTabWithDriver = useCallback(async (payload: {
-    tabKind: TabKind;
+  const createWidgetTabWithDriver = useCallback(async (payload: {
+    widgetKind: WidgetKind;
     title: string;
     input: Record<string, unknown>;
     activate?: boolean;
@@ -648,13 +644,13 @@ export function App() {
     const activate = payload.activate ?? true;
     const paneId = payload.paneId ?? resolvedActivePaneId;
     const tabId = globalThis.crypto?.randomUUID?.() ?? String(Date.now());
-    const driver = getTabDriver(payload.tabKind);
-    const initialStatus: TabRecord["status"] = payload.tabKind === "terminal.local" ? "starting" : "idle";
-    const tab: TabRecord = {
+    const driver = getWidgetDriver(payload.widgetKind);
+    const initialStatus: WidgetTabRecord["status"] = payload.widgetKind === "terminal.local" ? "starting" : "idle";
+    const tab: WidgetTabRecord = {
       id: tabId,
-      tabKind: payload.tabKind,
+      tabKind: payload.widgetKind,
       widget: {
-        kind: payload.tabKind,
+        kind: payload.widgetKind,
         input: payload.input
       },
       title: payload.title,
@@ -671,7 +667,7 @@ export function App() {
       setTabs((prev) =>
         prev.map((t) =>
           t.id === tabId
-            ? isLocalTerminalTab(t)
+            ? isLocalTerminalWidgetTab(t)
               ? {
                   ...t,
                   session: handle.session,
@@ -699,14 +695,14 @@ export function App() {
 
   const createLocalTerminalTab = useCallback(async (activate = true, paneId = resolvedActivePaneId) => {
     tabCounterRef.current += 1;
-    return await createTabWithDriver({
-      tabKind: "terminal.local",
+    return await createWidgetTabWithDriver({
+      widgetKind: "terminal.local",
       title: nextTabTitle(tabCounterRef.current),
       input: DEFAULT_LOCAL_TERMINAL_INPUT,
       activate,
       paneId
     });
-  }, [createTabWithDriver, resolvedActivePaneId]);
+  }, [createWidgetTabWithDriver, resolvedActivePaneId]);
 
   const createLocalTerminalTabWithScripts = useCallback(async (
     payload: {
@@ -716,29 +712,29 @@ export function App() {
     }
   ) => {
     tabCounterRef.current += 1;
-    const input: LocalTerminalDriverInput = {
+    const input: LocalTerminalWidgetInput = {
       ...DEFAULT_LOCAL_TERMINAL_INPUT,
       ...(payload.startupScripts.length > 0 ? { startupScripts: payload.startupScripts } : {})
     };
-    return await createTabWithDriver({
-      tabKind: "terminal.local",
+    return await createWidgetTabWithDriver({
+      widgetKind: "terminal.local",
       title: nextTabTitle(tabCounterRef.current),
       input,
       activate: payload.activate,
       paneId: payload.paneId
     });
-  }, [createTabWithDriver]);
+  }, [createWidgetTabWithDriver]);
 
   const saveTerminalStartupScriptsEditor = useCallback(() => {
     const startupScripts = draftsToStartupScripts(terminalStartupScriptDrafts);
     if (terminalStartupScriptsTargetTabId) {
       setTabs((prev) =>
         prev.map((tab) => {
-          if (tab.id !== terminalStartupScriptsTargetTabId || !isLocalTerminalTab(tab)) {
+          if (tab.id !== terminalStartupScriptsTargetTabId || !isLocalTerminalWidgetTab(tab)) {
             return tab;
           }
-          const nextInput: LocalTerminalDriverInput = {
-            ...(tab.widget.input as LocalTerminalDriverInput),
+          const nextInput: LocalTerminalWidgetInput = {
+            ...(tab.widget.input as LocalTerminalWidgetInput),
             ...(startupScripts.length > 0 ? { startupScripts } : { startupScripts: [] })
           };
           return {
@@ -785,13 +781,13 @@ export function App() {
     }
     const input = makePluginViewInput(template, request.state);
     const payload: {
-      tabKind: "plugin.view";
+      widgetKind: "plugin.view";
       title: string;
       input: Record<string, unknown>;
       activate: boolean;
       paneId?: string;
     } = {
-      tabKind: "plugin.view",
+      widgetKind: "plugin.view",
       title: request.title?.trim() || template.title,
       input: input as Record<string, unknown>,
       activate: true
@@ -799,8 +795,8 @@ export function App() {
     if (request.paneId) {
       payload.paneId = request.paneId;
     }
-    return await createTabWithDriver(payload);
-  }, [createTabWithDriver, pluginTemplates]);
+    return await createWidgetTabWithDriver(payload);
+  }, [createWidgetTabWithDriver, pluginTemplates]);
 
   const clearStartupScriptTimersForSession = useCallback((sessionKey: string) => {
     const timers = startupScriptTimersRef.current.get(sessionKey);
@@ -861,7 +857,7 @@ export function App() {
     const tabId = sessionKey.slice(0, separatorIndex);
     const expectedSessionId = sessionKey.slice(separatorIndex + 1);
     const tab = tabsRef.current.find((entry) => entry.id === tabId);
-    if (!tab || !isLocalTerminalTab(tab)) return;
+    if (!tab || !isLocalTerminalWidgetTab(tab)) return;
     if (!tab.session?.sessionId || tab.session.sessionId !== expectedSessionId) return;
 
     const scripts = parseStartupScriptsFromInput(tab.widget.input);
@@ -876,7 +872,7 @@ export function App() {
       const delayMs = sanitizeDelayMs(script.delayMs);
       const timer = setTimeout(() => {
         const current = tabsRef.current.find((entry) => entry.id === tabId);
-        if (!current || !isLocalTerminalTab(current)) return;
+        if (!current || !isLocalTerminalWidgetTab(current)) return;
         if (!current.session?.sessionId || current.session.sessionId !== expectedSessionId) return;
         if (executed.has(script.id)) return;
         const line = toScriptCommandLine(script.command);
@@ -895,7 +891,7 @@ export function App() {
   const markStartupReadyOutput = useCallback((tabId: string, bytes: number) => {
     if (bytes <= 0) return;
     const tab = tabsRef.current.find((entry) => entry.id === tabId);
-    if (!tab || !isLocalTerminalTab(tab) || !tab.session?.sessionId) return;
+    if (!tab || !isLocalTerminalWidgetTab(tab) || !tab.session?.sessionId) return;
     const sessionKey = `${tabId}:${tab.session.sessionId}`;
     const gate = startupReadyGateRef.current.get(sessionKey);
     if (!gate) return;
@@ -911,7 +907,7 @@ export function App() {
 
   const handleTerminalSessionReady = useCallback((tabId: string) => {
     const tab = tabsRef.current.find((entry) => entry.id === tabId);
-    if (!tab || !isLocalTerminalTab(tab) || !tab.session?.sessionId) return;
+    if (!tab || !isLocalTerminalWidgetTab(tab) || !tab.session?.sessionId) return;
     const sessionKey = `${tabId}:${tab.session.sessionId}`;
     clearStartupReadyGateForSession(sessionKey);
     const fallbackTimer = setTimeout(() => {
@@ -925,7 +921,7 @@ export function App() {
 
   useEffect(() => {
     for (const tab of tabs) {
-      if (!isLocalTerminalTab(tab)) continue;
+      if (!isLocalTerminalWidgetTab(tab)) continue;
       if (tab.status !== "ready") continue;
       if (!tab.session?.sessionId) continue;
       const scripts = parseStartupScriptsFromInput(tab.widget.input);
@@ -947,7 +943,7 @@ export function App() {
 
     for (const tab of tabs) {
       if (!pendingStartupRerunTabIdsRef.current.has(tab.id)) continue;
-      if (!isLocalTerminalTab(tab)) {
+      if (!isLocalTerminalWidgetTab(tab)) {
         pendingStartupRerunTabIdsRef.current.delete(tab.id);
         continue;
       }
@@ -978,7 +974,7 @@ export function App() {
     const snapshot = tabs;
     const target = snapshot.find((t) => t.id === tabId);
     if (target) {
-      const driver = getTabDriver(target.widget.kind);
+      const driver = getWidgetDriver(target.widget.kind);
       await driver.dispose({
         session: target.session,
         status: target.status
@@ -1062,11 +1058,11 @@ export function App() {
     [persistedTabsDigest, workspace]
   );
 
-  const disposeTabs = useCallback(async (records: TabRecord[]) => {
+  const disposeTabs = useCallback(async (records: WidgetTabRecord[]) => {
     await Promise.all(
       records.map(async (record) => {
         try {
-          const driver = getTabDriver(record.widget.kind);
+          const driver = getWidgetDriver(record.widget.kind);
           await driver.dispose({
             session: record.session,
             status: record.status
@@ -1120,7 +1116,7 @@ export function App() {
         // Merge tabs: keep existing running tabs, add any new tabs from snapshot
         setTabs((currentTabs) => {
           const currentTabsById = new Map(currentTabs.map(t => [t.id, t]));
-          const newTabs: TabRecord[] = [];
+          const newTabs: WidgetTabRecord[] = [];
 
           // Add all tabs from new layout (preserve running state if already exists)
           for (const descriptor of snapshot.tabs) {
@@ -1155,7 +1151,7 @@ export function App() {
       }
 
       // Cold boot mode: restore tabs according to restorePolicy
-      const restoredTabs: TabRecord[] = snapshot.tabs.map((descriptor) => {
+      const restoredTabs: WidgetTabRecord[] = snapshot.tabs.map((descriptor) => {
         const widget = normalizeDescriptorWidget(descriptor);
         return {
           id: descriptor.id,
@@ -1177,11 +1173,11 @@ export function App() {
         if (descriptorWidget.kind !== "terminal.local") continue;
 
         try {
-          const driver = getTabDriver("terminal.local");
-          const handle = await driver.restore(descriptorWidget.input as LocalTerminalDriverInput);
+          const driver = getWidgetDriver("terminal.local");
+          const handle = await driver.restore(descriptorWidget.input as LocalTerminalWidgetInput);
           setTabs((prev) =>
             prev.map((tab) =>
-              tab.id === descriptor.id && isLocalTerminalTab(tab)
+              tab.id === descriptor.id && isLocalTerminalWidgetTab(tab)
                 ? {
                     ...tab,
                     input: descriptorWidget.input,
@@ -1787,7 +1783,7 @@ export function App() {
 
     const paneTabs = node.tabIds
       .map((tabId) => tabsById.get(tabId))
-      .filter((tab): tab is TabRecord => Boolean(tab));
+      .filter((tab): tab is WidgetTabRecord => Boolean(tab));
     const paneActiveTabId = paneTabs.some((tab) => tab.id === node.activeTabId)
       ? node.activeTabId
       : paneTabs[0]?.id;
@@ -2016,8 +2012,8 @@ export function App() {
                       : "pointer-events-none invisible absolute inset-0 h-full min-h-0"
                   }
                 >
-                  {isLocalTerminalTab(tab) ? (
-                    <TerminalPane
+                  {isLocalTerminalWidgetTab(tab) ? (
+                    <LocalTerminalWidgetPane
                       tab={tab}
                       isActive={tab.id === activeTabId}
                       onTraffic={recordTraffic}
@@ -2027,7 +2023,7 @@ export function App() {
                       onWsConnected={updateWsConnected}
                     />
                   ) : tab.widget.kind === "plugin.view" ? (
-                    <PluginTabPane
+                    <PluginWidgetPane
                       tab={tab}
                       isActive={tab.id === activeTabId}
                       onUpdateInput={updateTabInput}
@@ -2244,10 +2240,10 @@ export function App() {
       {orphanTabs.length > 0 && (
         <div className="hidden" aria-hidden="true">
           {orphanTabs.map((tab) => {
-            if (isLocalTerminalTab(tab)) {
+            if (isLocalTerminalWidgetTab(tab)) {
               return (
                 <div key={tab.id} data-orphan-tab={tab.id}>
-                  <TerminalPane
+                  <LocalTerminalWidgetPane
                     tab={tab}
                     isActive={false}
                     onTraffic={recordTraffic}
@@ -2262,7 +2258,7 @@ export function App() {
             if (tab.widget.kind === "plugin.view") {
               return (
                 <div key={tab.id} data-orphan-tab={tab.id}>
-                  <PluginTabPane
+                  <PluginWidgetPane
                     tab={tab}
                     isActive={false}
                     onUpdateInput={updateTabInput}
@@ -2343,7 +2339,7 @@ export function App() {
         >
           {(() => {
             const menuTarget = tabsById.get(tabContextMenu.tabId);
-            return menuTarget ? isLocalTerminalTab(menuTarget) : false;
+            return menuTarget ? isLocalTerminalWidgetTab(menuTarget) : false;
           })() ? (
             <button
               type="button"

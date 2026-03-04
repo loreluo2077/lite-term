@@ -20,6 +20,7 @@ const builtinWorkspacePlugin: RendererPlugin = {
     entry: "renderer://builtin-workspace-plugin",
     contributes: {
       tabKinds: ["plugin.view:file.browser", "plugin.view:widget.markdown"],
+      widgetKinds: ["plugin.view:file.browser", "plugin.view:widget.markdown"],
       commands: [],
       widgets: ["file.browser", "widget.markdown"]
     },

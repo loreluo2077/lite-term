@@ -31,7 +31,7 @@ Session 仅属于 `terminal.local widget` 的运行时资源。
 
 ### 3.3 渲染层
 
-- `TerminalPane` 仅接收 local terminal tab（widget.kind=terminal.local）
+- `LocalTerminalWidgetPane` 仅接收 local terminal tab（widget.kind=terminal.local）
 - 通过 `connectSessionWebSocket` 连接 worker 数据平面
 
 ## 4. 生命周期与状态
