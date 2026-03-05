@@ -6,7 +6,7 @@
 
 - 桌面容器: Electron
 - 渲染层: React + Vite + Jotai + xterm.js
-- 会话执行: node-pty + 独立 session-worker
+- 会话执行: node-pty + `widget-terminal` worker
 - 协议与校验: Zod（`@localterm/shared`）
 - Monorepo: pnpm workspace + TypeScript
 
@@ -29,15 +29,19 @@
 - `apps/desktop`: Electron 主进程、preload、IPC、workspace 存储
 - `apps/renderer`: UI、pane-tree、tab 容器、widget 渲染、会话连接
 - `apps/renderer/src/lib/widgets`: widget runtime state、widget drivers
-- `apps/renderer/src/components/widgets`: widget 组件（local terminal / plugin view）
+- `apps/renderer/src/components/widgets`: widget 组件（local terminal / plugin widget）
 
 ### 3.2 核心包层
 
-- `packages/shared`: 跨进程 schema、类型、常量
-- `packages/control-plane`: 会话控制平面（create/resize/kill/list）
-- `packages/session-worker`: 每会话独立 worker（WS server + adapter 桥接）
-- `packages/session-local`: 本地 shell adapter（node-pty）
-- `packages/session-core`: session adapter 抽象
+- `packages/shared/src/schemas/base`: 基础协议（control-plane / worker-ipc / session-events / fs / metrics）
+- `packages/shared/src/schemas/widget`: widget 协议（widget descriptor + tab descriptor 兼容层）
+- `packages/shared/src/schemas/plugin`: plugin 协议（manifest / rpc）
+- `packages/shared/src/schemas/workspace`: workspace 协议（layout + snapshot）
+- `packages/control-plane/src/port` + `src/registry`: base 控制平面能力
+- `packages/control-plane/src/widgets/local-terminal`: local terminal widget 控制逻辑
+- `packages/widget-terminal/src/base`: session adapter 抽象（base）
+- `packages/widget-terminal/src/local-terminal`: local terminal worker + adapter（node-pty）
+- `packages/session-core` / `packages/session-local` / `packages/session-worker`: 兼容 shim
 
 ## 4. 核心数据流
 
@@ -67,10 +71,20 @@
 当前采用兼容策略：
 
 - 运行态与渲染逻辑以 `tab.widget.kind/input` 为主
-- 持久化仍保留 legacy 字段 `tabKind/input`
+- 运行态主字段为 `widgetKind`（`tabKind` 仅兼容读取）
+- plugin 统一按 widget 语义处理：
+- 内置 plugin widget：`file.browser` / `note.markdown`
+- 外部 plugin widget：`plugin.widget`（`pluginId + widgetId + state`）
+- snapshot 写路径固定写 `schemaVersion=3` + 纯 `widget` 描述
 - snapshot 读路径支持：
-- 新格式（含 `widget`）
-- 旧格式（仅 `tabKind/input`，读取时自动映射为 widget）
+- `v3` 新格式（纯 `widget`）
+- `v2` 旧格式（`tabKind/input`，读取时自动迁移为 `widget`）
+- plugin manifest 读路径支持：
+- `v2` 新格式（`manifestVersion=2` + `widgetKinds`）
+- `v1` 旧格式（`tabKinds`，解析时自动迁移为 `v2`）
+- plugin widget input 读路径支持：
+- 新格式 `widgetId`
+- 旧格式 `viewId`（读取时自动迁移为 `widgetId`）
 
 这样可以保证历史 workspace 快照可继续加载。
 
@@ -84,7 +98,7 @@
 ## 7. 扩展点
 
 - 新 Widget 类型：
-- 扩展 `WidgetDescriptor` / `tabKind` 映射
+- 扩展 `WidgetDescriptor`（必要时补 legacy `tabKind` 映射）
 - 实现对应渲染组件与 driver
 - 新会话类型：
 - 在 session adapter 层扩展（如 ssh），再接入对应 widget

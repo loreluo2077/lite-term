@@ -5,8 +5,7 @@
   "type": "module",
   "dependencies": {
     "@localterm/session-local": "workspace:*",
-    "@localterm/shared": "workspace:*",
-    "ws": "^8.18.0"
+    "@localterm/widget-terminal": "workspace:*"
   },
   "exports": {
     ".": "./src/main.ts"

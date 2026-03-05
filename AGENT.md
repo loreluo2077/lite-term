@@ -30,12 +30,19 @@
 - `apps/desktop`: Electron 主进程、IPC、workspace 存储
 - `apps/renderer`: UI、pane-tree、tab 容器、widget 渲染
 - `apps/renderer/src/lib/widgets`: widget runtime state + widget drivers
-- `apps/renderer/src/components/widgets`: widget 组件（local terminal / plugin view）
-- `packages/control-plane`: 会话生命周期控制
-- `packages/session-worker`: 每会话 worker 进程入口
-- `packages/session-local`: 本地 pty 适配器
-- `packages/shared`: schema、协议、常量
+- `apps/renderer/src/components/widgets`: widget 组件（local terminal / plugin widget）
+- `packages/control-plane/src/port` + `src/registry`: base 控制平面能力
+- `packages/control-plane/src/widgets/local-terminal`: local terminal widget 控制平面
+- `packages/widget-terminal/src/base`: session adapter 基础抽象
+- `packages/widget-terminal/src/local-terminal`: local terminal widget adapter + worker 入口
+- `packages/shared/src/schemas/base|widget|plugin|workspace`: 协议分层
+- `packages/session-core` / `packages/session-local` / `packages/session-worker`: 兼容层（逐步淘汰）
 - `tests/integration`: 关键集成测试
+
+协议版本约束：
+- workspace snapshot 对外兼容 `v2`，内部落盘统一 `v3(widget)`
+- plugin manifest 对外兼容 `v1(tabKinds)`，内部统一 `v2(widgetKinds)`
+- plugin widget input 对外兼容 `viewId`，内部统一 `widgetId`
 
 ## 4. 任务执行流程
 

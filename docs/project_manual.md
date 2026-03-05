@@ -36,8 +36,12 @@ Lo-Fi Room 聚焦多 agent 并行协作、多 workspace 切换、以及终端与
 当前内置：
 
 - `terminal.local`
-- `plugin.view:file.browser`
-- `plugin.view:widget.markdown`
+- `file.browser`
+- `note.markdown`
+- `plugin.widget`（外部插件扩展入口）
+
+说明：
+- plugin 不再作为与 widget 平行的模型，而是“可外部扩展的 widget 来源”。
 
 ### 3.4 Session（Terminal Widget 专属）
 
@@ -51,9 +55,9 @@ Lo-Fi Room 聚焦多 agent 并行协作、多 workspace 切换、以及终端与
 workspace snapshot 当前采用迁移兼容方案：
 
 - 新语义字段: `widget.kind/input`
-- 兼容字段: `tabKind/input`
+- 兼容字段: `tabKind/input`（仅读取旧快照）
 
-读路径兼容旧快照，写路径双写，避免历史 workspace 失效。
+读路径兼容旧快照，写路径统一升级到 `schemaVersion=3` 纯 widget 结构。
 
 ## 5. 文档入口
 

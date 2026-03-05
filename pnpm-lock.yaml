@@ -140,33 +140,27 @@ importers:
 
   packages/session-core:
     dependencies:
-      '@localterm/shared':
+      '@localterm/widget-terminal':
         specifier: workspace:*
-        version: link:../shared
+        version: link:../widget-terminal
 
   packages/session-local:
     dependencies:
-      '@homebridge/node-pty-prebuilt-multiarch':
-        specifier: 0.13.1
-        version: 0.13.1
       '@localterm/session-core':
         specifier: workspace:*
         version: link:../session-core
-      '@localterm/shared':
+      '@localterm/widget-terminal':
         specifier: workspace:*
-        version: link:../shared
+        version: link:../widget-terminal
 
   packages/session-worker:
     dependencies:
       '@localterm/session-local':
         specifier: workspace:*
         version: link:../session-local
-      '@localterm/shared':
+      '@localterm/widget-terminal':
         specifier: workspace:*
-        version: link:../shared
-      ws:
-        specifier: ^8.18.0
-        version: 8.19.0
+        version: link:../widget-terminal
 
   packages/shared:
     dependencies:
@@ -179,6 +173,18 @@ importers:
       '@localterm/control-plane':
         specifier: workspace:*
         version: link:../control-plane
+      '@localterm/shared':
+        specifier: workspace:*
+        version: link:../shared
+      ws:
+        specifier: ^8.18.0
+        version: 8.19.0
+
+  packages/widget-terminal:
+    dependencies:
+      '@homebridge/node-pty-prebuilt-multiarch':
+        specifier: 0.13.1
+        version: 0.13.1
       '@localterm/shared':
         specifier: workspace:*
         version: link:../shared

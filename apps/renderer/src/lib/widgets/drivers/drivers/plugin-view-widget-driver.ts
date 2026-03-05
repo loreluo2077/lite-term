@@ -1,7 +1,7 @@
 import type { WidgetDriver } from "../types";
 
-export const pluginViewWidgetDriver: WidgetDriver<"plugin.view"> = {
-  kind: "plugin.view",
+export const pluginWidgetDriver: WidgetDriver<"plugin.widget"> = {
+  kind: "plugin.widget",
   async create() {
     return {
       status: "idle"
@@ -17,5 +17,6 @@ export const pluginViewWidgetDriver: WidgetDriver<"plugin.view"> = {
   }
 };
 
-// Backward-compatible alias.
-export const pluginViewTabDriver = pluginViewWidgetDriver;
+// Backward-compatible aliases.
+export const pluginViewWidgetDriver = pluginWidgetDriver;
+export const pluginViewTabDriver = pluginWidgetDriver;

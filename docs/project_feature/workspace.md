@@ -10,7 +10,8 @@ Workspace 是可持久化的协作快照，包含：
 当前 Tab 描述采用“兼容迁移”结构：
 
 - 主语义: `widget.kind + widget.input`
-- 兼容字段: `tabKind + input`
+- 兼容字段: `tabKind + input`（仅用于读取旧快照）
+- 当前写路径: 统一写 `schemaVersion=3`
 
 ## 2. 本地存储模型
 

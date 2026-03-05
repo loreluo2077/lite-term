@@ -24,10 +24,13 @@ export function listRegisteredWidgetKinds(): WidgetKind[] {
 
 registerWidgetDriver(localTerminalWidgetDriver);
 registerWidgetDriver(pluginViewWidgetDriver);
+registerWidgetDriver(createNoopWidgetDriver("plugin.view"));
 registerWidgetDriver(createNoopWidgetDriver("terminal.ssh"));
 registerWidgetDriver(createNoopWidgetDriver("web.page"));
 registerWidgetDriver(createNoopWidgetDriver("web.browser"));
 registerWidgetDriver(createNoopWidgetDriver("widget.react"));
+registerWidgetDriver(createNoopWidgetDriver("file.browser"));
+registerWidgetDriver(createNoopWidgetDriver("note.markdown"));
 
 // Backward-compatible aliases.
 export const registerTabDriver = registerWidgetDriver;

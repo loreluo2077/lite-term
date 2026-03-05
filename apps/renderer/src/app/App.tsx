@@ -27,12 +27,13 @@ import type {
   LocalSessionStartupScript,
   PaneDirection,
   PaneNode,
-  TabDescriptor,
-  WidgetDescriptor,
+  PluginWidgetInput,
+  WidgetTabDescriptor,
   WidgetKind,
   WorkspaceListResponse,
   WorkspaceSnapshot
 } from "@localterm/shared";
+import { resolveWidgetDescriptorFromTabDescriptor } from "@localterm/shared";
 import {
   activateTabInPaneAtom,
   addTabToPaneAtom,
@@ -50,10 +51,10 @@ import {
   listLeafPaneIds
 } from "../lib/workspace/pane-tree";
 import {
-  listPluginViewTemplates,
-  parsePluginViewInput,
-  makePluginViewInput,
-  type OpenPluginViewRequest
+  listPluginWidgetTemplates,
+  parsePluginWidgetInput,
+  makePluginWidgetInput,
+  type OpenPluginWidgetRequest
 } from "../lib/plugins";
 import {
   Panel,
@@ -313,104 +314,114 @@ function parseStartupScriptDraftsFromInput(input: Record<string, unknown>): Star
   return parsed;
 }
 
-function normalizeDescriptorWidget(descriptor: TabDescriptor): WidgetDescriptor {
-  const candidate = descriptor.widget;
-  if (candidate && candidate.kind === descriptor.tabKind) {
-    return candidate;
-  }
+function defaultNoteWidgetInput(): PluginWidgetInput {
   return {
-    kind: descriptor.tabKind,
-    input: descriptor.input
-  } as WidgetDescriptor;
+    pluginId: "builtin.workspace",
+    widgetId: "note.markdown",
+    state: {
+      content: "# Notes\n\n",
+      source: "inline",
+      mode: "edit"
+    }
+  };
 }
 
-function toPersistedTabDescriptors(records: WidgetTabRecord[]): TabDescriptor[] {
+function normalizePluginWidgetInput(input: unknown): PluginWidgetInput {
+  return parsePluginWidgetInput(input) ?? defaultNoteWidgetInput();
+}
+
+function resolvePluginWidgetKind(input: PluginWidgetInput): WidgetKind {
+  if (input.pluginId !== "builtin.workspace") return "plugin.widget";
+  if (input.widgetId === "file.browser") return "file.browser";
+  if (input.widgetId === "widget.markdown") return "note.markdown";
+  if (input.widgetId === "note.markdown") return "note.markdown";
+  return "plugin.widget";
+}
+
+function toPersistedTabDescriptors(records: WidgetTabRecord[]): WidgetTabDescriptor[] {
   return records.map((record) => {
     const widget = record.widget;
     switch (widget.kind) {
       case "terminal.local":
         return {
           id: record.id,
-          tabKind: "terminal.local",
           title: record.title,
-          input: (widget.input as LocalTerminalWidgetInput) ?? DEFAULT_LOCAL_TERMINAL_INPUT,
           widget: {
             kind: "terminal.local",
             input: (widget.input as LocalTerminalWidgetInput) ?? DEFAULT_LOCAL_TERMINAL_INPUT
           },
           restorePolicy: "recreate"
-        };
+        } as WidgetTabDescriptor;
+      case "file.browser":
+      case "note.markdown":
+      case "plugin.widget":
       case "plugin.view":
         {
-          const parsedInput = parsePluginViewInput(widget.input) ?? {
-            pluginId: "builtin.workspace",
-            viewId: "widget.markdown",
-            state: {
-              content: "# Notes\n\n",
-              source: "inline",
-              mode: "edit"
-            }
-          };
+          const parsedInput = normalizePluginWidgetInput(widget.input);
+          const persistedKind =
+            widget.kind === "plugin.view" || widget.kind === "plugin.widget"
+              ? resolvePluginWidgetKind(parsedInput)
+              : widget.kind;
           return {
             id: record.id,
-            tabKind: "plugin.view",
             title: record.title,
-            input: parsedInput,
             widget: {
-              kind: "plugin.view",
+              kind: persistedKind as "plugin.widget" | "file.browser" | "note.markdown",
               input: parsedInput
             },
             restorePolicy: "manual"
-          };
+          } as WidgetTabDescriptor;
         }
       case "terminal.ssh":
         return {
           id: record.id,
-          tabKind: "terminal.ssh",
           title: record.title,
-          input: widget.input,
           widget: {
             kind: "terminal.ssh",
             input: widget.input
           },
           restorePolicy: "manual"
-        };
+        } as WidgetTabDescriptor;
       case "web.page":
         return {
           id: record.id,
-          tabKind: "web.page",
           title: record.title,
-          input: widget.input,
           widget: {
             kind: "web.page",
             input: widget.input
           },
           restorePolicy: "manual"
-        };
+        } as WidgetTabDescriptor;
       case "web.browser":
         return {
           id: record.id,
-          tabKind: "web.browser",
           title: record.title,
-          input: widget.input,
           widget: {
             kind: "web.browser",
             input: widget.input
           },
           restorePolicy: "manual"
-        };
+        } as WidgetTabDescriptor;
       case "widget.react":
         return {
           id: record.id,
-          tabKind: "widget.react",
           title: record.title,
-          input: widget.input,
           widget: {
             kind: "widget.react",
             input: widget.input
           },
           restorePolicy: "manual"
-        };
+        } as WidgetTabDescriptor;
+      default:
+        return {
+          id: record.id,
+          title: record.title,
+          widget: {
+            kind: "plugin.widget",
+            input: normalizePluginWidgetInput(record.widget.input)
+          },
+          restorePolicy: "manual"
+        } as WidgetTabDescriptor;
     }
   });
 }
@@ -498,7 +509,7 @@ export function App() {
       quietTimer: ReturnType<typeof setTimeout> | null;
     }
   >>(new Map());
-  const pluginTemplates = useMemo(() => listPluginViewTemplates(), []);
+  const pluginTemplates = useMemo(() => listPluginWidgetTemplates(), []);
   const leafPaneIds = useMemo(() => listLeafPaneIds(workspace.root), [workspace.root]);
   const workspaceById = useMemo(
     () => new Map(workspaceList.workspaces.map((entry) => [entry.id, entry])),
@@ -648,7 +659,7 @@ export function App() {
     const initialStatus: WidgetTabRecord["status"] = payload.widgetKind === "terminal.local" ? "starting" : "idle";
     const tab: WidgetTabRecord = {
       id: tabId,
-      tabKind: payload.widgetKind,
+      widgetKind: payload.widgetKind,
       widget: {
         kind: payload.widgetKind,
         input: payload.input
@@ -769,25 +780,30 @@ export function App() {
     terminalStartupScriptsTargetTabId
   ]);
 
-  const createPluginViewTab = useCallback(async (request: OpenPluginViewRequest) => {
+  const createPluginViewTab = useCallback(async (request: OpenPluginWidgetRequest) => {
+    const requestWidgetId = request.widgetId ?? request.viewId;
+    if (!requestWidgetId) {
+      console.error("plugin widget id missing", request);
+      return "";
+    }
     const template = pluginTemplates.find(
       (entry) =>
-        entry.viewId === request.viewId &&
+        entry.widgetId === requestWidgetId &&
         (request.pluginId ? entry.pluginId === request.pluginId : true)
     );
     if (!template) {
       console.error("plugin template not found", request);
       return "";
     }
-    const input = makePluginViewInput(template, request.state);
+    const input = makePluginWidgetInput(template, request.state);
     const payload: {
-      widgetKind: "plugin.view";
+      widgetKind: WidgetKind;
       title: string;
       input: Record<string, unknown>;
       activate: boolean;
       paneId?: string;
     } = {
-      widgetKind: "plugin.view",
+      widgetKind: resolvePluginWidgetKind(input),
       title: request.title?.trim() || template.title,
       input: input as Record<string, unknown>,
       activate: true
@@ -1046,14 +1062,16 @@ export function App() {
   const buildWorkspaceSnapshot = useCallback(
     (overrides?: Partial<WorkspaceSnapshot["layout"]>): WorkspaceSnapshot => {
       const tabsForPersistence = JSON.parse(persistedTabsDigest) as WorkspaceSnapshot["tabs"];
+      const layout = {
+        ...(workspace as WorkspaceSnapshot["layout"]),
+        ...overrides,
+        schemaVersion: 3 as const,
+        updatedAt: Date.now()
+      } as WorkspaceSnapshot["layout"];
       return {
-        layout: {
-          ...workspace,
-          ...overrides,
-          updatedAt: Date.now()
-        },
+        layout,
         tabs: tabsForPersistence
-      };
+      } as WorkspaceSnapshot;
     },
     [persistedTabsDigest, workspace]
   );
@@ -1127,10 +1145,10 @@ export function App() {
               currentTabsById.delete(descriptor.id);
             } else {
               // Add new tab from snapshot (will need to create session if restorePolicy=recreate)
-              const widget = normalizeDescriptorWidget(descriptor);
+              const widget = resolveWidgetDescriptorFromTabDescriptor(descriptor);
               newTabs.push({
                 id: descriptor.id,
-                tabKind: widget.kind,
+                widgetKind: widget.kind,
                 widget,
                 title: descriptor.customTitle ?? descriptor.title,
                 input: widget.input,
@@ -1152,10 +1170,10 @@ export function App() {
 
       // Cold boot mode: restore tabs according to restorePolicy
       const restoredTabs: WidgetTabRecord[] = snapshot.tabs.map((descriptor) => {
-        const widget = normalizeDescriptorWidget(descriptor);
+        const widget = resolveWidgetDescriptorFromTabDescriptor(descriptor);
         return {
           id: descriptor.id,
-          tabKind: widget.kind,
+          widgetKind: widget.kind,
           widget,
           title: descriptor.customTitle ?? descriptor.title,
           input: widget.input,
@@ -1169,7 +1187,7 @@ export function App() {
 
       for (const descriptor of snapshot.tabs) {
         if (descriptor.restorePolicy !== "recreate") continue;
-        const descriptorWidget = normalizeDescriptorWidget(descriptor);
+        const descriptorWidget = resolveWidgetDescriptorFromTabDescriptor(descriptor);
         if (descriptorWidget.kind !== "terminal.local") continue;
 
         try {
@@ -1253,7 +1271,7 @@ export function App() {
       const snapshot = await window.localtermApi.workspace.load({ id: workspaceId });
       if (reopenFromHistory) {
         for (const descriptor of snapshot.tabs) {
-          const descriptorWidget = normalizeDescriptorWidget(descriptor);
+          const descriptorWidget = resolveWidgetDescriptorFromTabDescriptor(descriptor);
           if (descriptorWidget.kind !== "terminal.local") continue;
           const scripts = parseStartupScriptsFromInput(descriptorWidget.input);
           if (scripts.length === 0) continue;
@@ -1280,14 +1298,14 @@ export function App() {
     const now = Date.now();
     const id = `workspace-${now.toString(36)}`;
     const name = `Workspace ${workspaceList.workspaces.length + 1}`;
-    const nextSnapshot: WorkspaceSnapshot = {
+    const nextSnapshot = {
       layout: {
         ...createDefaultWorkspaceLayout(now),
         id,
         name
       },
       tabs: []
-    };
+    } as WorkspaceSnapshot;
     setWorkspaceActionBusy(true);
     try {
       // Save current state before creating new workspace
@@ -1371,10 +1389,10 @@ export function App() {
 
       // No active workspace left: switch to a transient workspace without persisting it.
       const now = Date.now();
-      const fresh: WorkspaceSnapshot = {
+      const fresh = {
         layout: createDefaultWorkspaceLayout(now),
         tabs: []
-      };
+      } as WorkspaceSnapshot;
 
       // Closing the last workspace should clear active runtime tabs.
       await restoreWorkspaceSnapshot(fresh, { killExisting: true, coldBoot: true });
@@ -1857,7 +1875,7 @@ export function App() {
               className="h-6 px-2 text-[10px]"
               onClick={() => {
                 void createPluginViewTab({
-                  viewId: "file.browser",
+                  widgetId: "file.browser",
                   paneId: node.id
                 });
               }}
@@ -1870,7 +1888,7 @@ export function App() {
               className="h-6 px-2 text-[10px]"
               onClick={() => {
                 void createPluginViewTab({
-                  viewId: "widget.markdown",
+                  widgetId: "note.markdown",
                   paneId: node.id
                 });
               }}
@@ -2022,13 +2040,16 @@ export function App() {
                       onStatus={updateStatus}
                       onWsConnected={updateWsConnected}
                     />
-                  ) : tab.widget.kind === "plugin.view" ? (
+                  ) : tab.widget.kind === "plugin.widget" ||
+                    tab.widget.kind === "plugin.view" ||
+                    tab.widget.kind === "file.browser" ||
+                    tab.widget.kind === "note.markdown" ? (
                     <PluginWidgetPane
                       tab={tab}
                       isActive={tab.id === activeTabId}
                       onUpdateInput={updateTabInput}
                       onUpdateTitle={updateTabTitle}
-                      onOpenPluginView={(request) => {
+                      onOpenPluginWidget={(request) => {
                         void createPluginViewTab({
                           ...request,
                           paneId: request.paneId ?? node.id
@@ -2255,7 +2276,12 @@ export function App() {
                 </div>
               );
             }
-            if (tab.widget.kind === "plugin.view") {
+            if (
+              tab.widget.kind === "plugin.widget" ||
+              tab.widget.kind === "plugin.view" ||
+              tab.widget.kind === "file.browser" ||
+              tab.widget.kind === "note.markdown"
+            ) {
               return (
                 <div key={tab.id} data-orphan-tab={tab.id}>
                   <PluginWidgetPane
@@ -2263,7 +2289,7 @@ export function App() {
                     isActive={false}
                     onUpdateInput={updateTabInput}
                     onUpdateTitle={updateTabTitle}
-                    onOpenPluginView={(request) => {
+                    onOpenPluginWidget={(request) => {
                       void createPluginViewTab({
                         ...request,
                         paneId: workspace.activePaneId

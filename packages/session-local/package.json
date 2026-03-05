@@ -5,8 +5,7 @@
   "type": "module",
   "dependencies": {
     "@localterm/session-core": "workspace:*",
-    "@localterm/shared": "workspace:*",
-    "@homebridge/node-pty-prebuilt-multiarch": "0.13.1"
+    "@localterm/widget-terminal": "workspace:*"
   },
   "exports": {
     ".": "./src/index.ts"

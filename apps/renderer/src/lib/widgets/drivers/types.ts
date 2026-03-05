@@ -1,7 +1,7 @@
 import type {
   CreateLocalSessionRequest,
   CreateLocalSessionResponse,
-  PluginViewWidgetInput,
+  PluginWidgetInput,
   SessionStatus,
   WidgetKind
 } from "@localterm/shared";
@@ -14,7 +14,10 @@ export type WidgetDriverInputMap = {
   "web.page": Record<string, unknown>;
   "web.browser": Record<string, unknown>;
   "widget.react": Record<string, unknown>;
-  "plugin.view": PluginViewWidgetInput;
+  "plugin.widget": PluginWidgetInput;
+  "plugin.view": PluginWidgetInput;
+  "file.browser": PluginWidgetInput;
+  "note.markdown": PluginWidgetInput;
 };
 
 export type WidgetDriverHandle = {

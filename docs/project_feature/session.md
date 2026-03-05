@@ -20,14 +20,15 @@ Session 仅属于 `terminal.local widget` 的运行时资源。
 
 ### 3.1 控制平面
 
-- `packages/control-plane`
+- `packages/control-plane/src/widgets/local-terminal`
 - 能力: `createLocalSession / resizeSession / killSession / listSessions`
 
 ### 3.2 会话执行层
 
-- `packages/session-worker`: 管理 WS server、转发 IO、处理生命周期
-- `packages/session-local`: node-pty 本地 shell adapter
-- `packages/session-core`: adapter 抽象
+- `packages/widget-terminal/src/local-terminal`: 管理 WS server、转发 IO、处理生命周期
+- `packages/widget-terminal/src/local-terminal`: node-pty 本地 shell adapter
+- `packages/widget-terminal/src/base`: adapter 抽象
+- `packages/session-core` / `packages/session-local` / `packages/session-worker`: 兼容 shim
 
 ### 3.3 渲染层
 
@@ -77,12 +78,13 @@ Session 仅属于 `terminal.local widget` 的运行时资源。
 当前运行期逻辑已以 widget 为主：
 
 - 主要读取 `tab.widget.kind/input`
+- 运行态主字段为 `widgetKind`
 - `session` 仅在 local terminal tab 类型上存在
 
 兼容策略：
 
-- 保留 legacy `tabKind/input` 字段
-- snapshot 读写阶段仍双写，保证旧工作区可恢复
+- 读取兼容 legacy `tabKind/input`
+- 写入统一升级为 `schemaVersion=3` 纯 `widget` 描述
 
 ## 7. 自动化测试
 

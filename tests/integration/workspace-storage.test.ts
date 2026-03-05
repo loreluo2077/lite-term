@@ -110,6 +110,7 @@ test("workspace storage: save/load/list/delete/default", async () => {
 
     const loaded = await loadWorkspaceSnapshot(tempRoot, "dev");
     assert.equal(loaded.layout.id, "dev");
+    assert.equal(loaded.layout.schemaVersion, 3);
     assert.equal(loaded.tabs[0].id, "tab-2");
 
     await closeWorkspaceSnapshot(tempRoot, "dev");
@@ -134,9 +135,16 @@ test("workspace storage: save/load/list/delete/default", async () => {
     const pluginWorkspace = makePluginSnapshot("study", "tab-plugin");
     await saveWorkspaceSnapshot(tempRoot, pluginWorkspace);
     const loadedPlugin = await loadWorkspaceSnapshot(tempRoot, "study");
-    assert.equal(loadedPlugin.tabs[0]?.tabKind, "plugin.view");
-    assert.deepEqual(loadedPlugin.tabs[0]?.input, pluginWorkspace.tabs[0]?.input);
-    assert.deepEqual(loadedPlugin.tabs[0]?.widget, pluginWorkspace.tabs[0]?.widget);
+    assert.equal(loadedPlugin.layout.schemaVersion, 3);
+    assert.equal(loadedPlugin.tabs[0]?.widget.kind, "note.markdown");
+    assert.deepEqual(loadedPlugin.tabs[0]?.widget.input, {
+      pluginId: "builtin.workspace",
+      widgetId: "note.markdown",
+      state: {
+        source: "inline",
+        content: "# persisted"
+      }
+    });
   } finally {
     await fs.rm(tempRoot, { recursive: true, force: true });
   }

@@ -325,7 +325,7 @@ test("panel split + widget creation + pane close flow", async ({}, testInfo) => 
 
   await runHumanStep(page, testInfo, "create-note-widget", async () => {
     await page.getByRole("button", { name: "+Note" }).first().click();
-    await expect(page.getByText(/plugin builtin\.workspace:widget\.markdown/)).toBeVisible();
+    await expect(page.getByText(/plugin builtin\.workspace:(note\.markdown|widget\.markdown)/)).toBeVisible();
   });
 
   await runHumanStep(page, testInfo, "split-horizontal", async () => {

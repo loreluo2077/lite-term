@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  normalizeWorkspaceSnapshot,
   pluginManifestSchema,
   pluginRpcResponseSchema,
   workspaceSnapshotSchema
@@ -78,7 +79,9 @@ test("workspace snapshot schema accepts plugin.view state payload", () => {
     ]
   });
 
-  assert.equal(parsed.tabs[0]?.tabKind, "plugin.view");
+  assert.ok(parsed.tabs[0] && "tabKind" in parsed.tabs[0]);
+  if (!parsed.tabs[0] || !("tabKind" in parsed.tabs[0])) return;
+  assert.equal(parsed.tabs[0].tabKind, "plugin.view");
 });
 
 test("workspace snapshot schema accepts terminal startup scripts payload", () => {
@@ -119,8 +122,9 @@ test("workspace snapshot schema accepts terminal startup scripts payload", () =>
     ]
   });
 
-  assert.equal(parsed.tabs[0]?.tabKind, "terminal.local");
-  if (parsed.tabs[0]?.tabKind !== "terminal.local") return;
+  assert.ok(parsed.tabs[0] && "tabKind" in parsed.tabs[0]);
+  if (!parsed.tabs[0] || !("tabKind" in parsed.tabs[0])) return;
+  if (parsed.tabs[0].tabKind !== "terminal.local") return;
   assert.equal(parsed.tabs[0].input.startupScripts.length, 1);
   assert.equal(parsed.tabs[0].input.startupScripts[0]?.command, "echo ready");
 });
@@ -156,8 +160,127 @@ test("workspace snapshot schema accepts tab.widget payload (tab shell + widget c
     ]
   });
 
-  if (parsed.tabs[0]?.tabKind !== "terminal.local") return;
+  if (!parsed.tabs[0] || !("tabKind" in parsed.tabs[0])) return;
+  if (parsed.tabs[0].tabKind !== "terminal.local") return;
   assert.equal(parsed.tabs[0].widget?.kind, "terminal.local");
+});
+
+test("workspace snapshot schema accepts valid v3 widget payload", () => {
+  const parsed = workspaceSnapshotSchema.parse({
+    layout: {
+      schemaVersion: 3,
+      id: "v3",
+      name: "v3",
+      activePaneId: "pane-1",
+      createdAt: 1,
+      updatedAt: 1,
+      root: {
+        id: "pane-1",
+        type: "leaf",
+        tabIds: ["tab-1"],
+        activeTabId: "tab-1"
+      }
+    },
+    tabs: [
+      {
+        id: "tab-1",
+        title: "Files",
+        widget: {
+          kind: "file.browser",
+          input: {
+            pluginId: "builtin.workspace",
+            viewId: "file.browser",
+            state: {}
+          }
+        },
+        restorePolicy: "manual"
+      }
+    ]
+  });
+
+  assert.equal(parsed.layout.schemaVersion, 3);
+  if (!parsed.tabs[0] || !("widget" in parsed.tabs[0])) return;
+  assert.equal(parsed.tabs[0].widget.kind, "file.browser");
+});
+
+test("workspace snapshot schema accepts plugin.widget payload", () => {
+  const parsed = workspaceSnapshotSchema.parse({
+    layout: {
+      schemaVersion: 3,
+      id: "plugin-widget",
+      name: "plugin-widget",
+      activePaneId: "pane-1",
+      createdAt: 1,
+      updatedAt: 1,
+      root: {
+        id: "pane-1",
+        type: "leaf",
+        tabIds: ["tab-1"],
+        activeTabId: "tab-1"
+      }
+    },
+    tabs: [
+      {
+        id: "tab-1",
+        title: "Todo",
+        widget: {
+          kind: "plugin.widget",
+          input: {
+            pluginId: "external.todo",
+            widgetId: "todo.board",
+            state: {}
+          }
+        },
+        restorePolicy: "manual"
+      }
+    ]
+  });
+
+  if (!parsed.tabs[0] || !("widget" in parsed.tabs[0])) return;
+  assert.equal(parsed.tabs[0].widget.kind, "plugin.widget");
+});
+
+test("normalizeWorkspaceSnapshot upgrades v3 legacy plugin.view to widget semantics", () => {
+  const parsed = workspaceSnapshotSchema.parse({
+    layout: {
+      schemaVersion: 3,
+      id: "legacy-v3-plugin-view",
+      name: "legacy-v3-plugin-view",
+      activePaneId: "pane-1",
+      createdAt: 1,
+      updatedAt: 1,
+      root: {
+        id: "pane-1",
+        type: "leaf",
+        tabIds: ["tab-1"],
+        activeTabId: "tab-1"
+      }
+    },
+    tabs: [
+      {
+        id: "tab-1",
+        title: "Markdown",
+        widget: {
+          kind: "plugin.view",
+          input: {
+            pluginId: "builtin.workspace",
+            viewId: "widget.markdown",
+            state: {}
+          }
+        },
+        restorePolicy: "manual"
+      }
+    ]
+  });
+
+  const normalized = normalizeWorkspaceSnapshot(parsed);
+  if (!normalized.tabs[0]) return;
+  assert.equal(normalized.tabs[0].widget.kind, "note.markdown");
+  assert.deepEqual(normalized.tabs[0].widget.input, {
+    pluginId: "builtin.workspace",
+    widgetId: "note.markdown",
+    state: {}
+  });
 });
 
 test("workspace snapshot schema rejects split sizes that do not sum to 1", () => {
@@ -266,7 +389,8 @@ test("workspace snapshot schema fills default plugin.view state when omitted", (
     ]
   });
 
-  if (parsed.tabs[0]?.tabKind !== "plugin.view") return;
+  if (!parsed.tabs[0] || !("tabKind" in parsed.tabs[0])) return;
+  if (parsed.tabs[0].tabKind !== "plugin.view") return;
   assert.deepEqual(parsed.tabs[0].input.state, {});
 });
 
@@ -281,7 +405,7 @@ test("plugin rpc response requires error when ok=false", () => {
   );
 });
 
-test("plugin manifest derives widgetKinds from tabKinds for backward compatibility", () => {
+test("plugin manifest migrates v1 tabKinds to v2 widgetKinds", () => {
   const parsed = pluginManifestSchema.parse({
     id: "plugin.compat",
     version: "0.1.0",
@@ -293,23 +417,23 @@ test("plugin manifest derives widgetKinds from tabKinds for backward compatibili
     }
   });
 
-  assert.deepEqual(parsed.contributes.tabKinds, ["plugin.view:file.browser"]);
+  assert.equal(parsed.manifestVersion, 2);
   assert.deepEqual(parsed.contributes.widgetKinds, ["plugin.view:file.browser"]);
 });
 
-test("plugin manifest keeps explicit widgetKinds when provided", () => {
+test("plugin manifest keeps explicit v2 widgetKinds", () => {
   const parsed = pluginManifestSchema.parse({
+    manifestVersion: 2,
     id: "plugin.explicit",
     version: "0.1.0",
     entry: "renderer://explicit",
     contributes: {
-      tabKinds: ["legacy.tab.kind"],
       widgetKinds: ["plugin.view:widget.markdown"],
       commands: [],
       widgets: ["widget.markdown"]
     }
   });
 
-  assert.deepEqual(parsed.contributes.tabKinds, ["legacy.tab.kind"]);
+  assert.equal(parsed.manifestVersion, 2);
   assert.deepEqual(parsed.contributes.widgetKinds, ["plugin.view:widget.markdown"]);
 });

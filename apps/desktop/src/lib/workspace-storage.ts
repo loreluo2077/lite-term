@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
+  normalizeWorkspaceSnapshot,
   workspaceGetDefaultResponseSchema,
   workspaceIndexSchema,
   workspaceListResponseSchema,
@@ -71,7 +72,7 @@ async function writeIndex(userDataDir: string, index: WorkspaceListResponse) {
 }
 
 export async function saveWorkspaceSnapshot(userDataDir: string, payload: WorkspaceSnapshot) {
-  const snapshot = workspaceSnapshotSchema.parse(payload);
+  const snapshot = normalizeWorkspaceSnapshot(workspaceSnapshotSchema.parse(payload));
   await ensureStore(userDataDir);
   await writeFileAtomic(
     getSnapshotPath(userDataDir, snapshot.layout.id),
@@ -115,7 +116,7 @@ export async function saveWorkspaceSnapshot(userDataDir: string, payload: Worksp
 export async function loadWorkspaceSnapshot(userDataDir: string, workspaceId: string) {
   const filePath = getSnapshotPath(userDataDir, workspaceId);
   const raw = await fs.readFile(filePath, "utf8");
-  const parsed = workspaceSnapshotSchema.parse(JSON.parse(raw));
+  const parsed = normalizeWorkspaceSnapshot(workspaceSnapshotSchema.parse(JSON.parse(raw)));
   const index = await readIndex(userDataDir);
   const updated = {
     workspaces: index.workspaces.map((entry) =>

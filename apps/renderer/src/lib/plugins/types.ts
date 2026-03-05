@@ -1,19 +1,21 @@
 import type { ReactNode } from "react";
-import type { PluginManifest, PluginViewTabInput } from "@localterm/shared";
+import type { PluginManifest, PluginWidgetInput } from "@localterm/shared";
 
-export type OpenPluginViewRequest = {
+export type OpenPluginWidgetRequest = {
   pluginId?: string;
-  viewId: string;
+  widgetId?: string;
+  // Legacy compatibility field.
+  viewId?: string;
   title?: string;
   state?: Record<string, unknown>;
   paneId?: string;
 };
 
-export type PluginViewRenderContext = {
+export type PluginWidgetRenderContext = {
   tabId: string;
   tabTitle: string;
   isActive: boolean;
-  input: PluginViewTabInput;
+  input: PluginWidgetInput;
   state: Record<string, unknown>;
   setState: (
     next:
@@ -21,25 +23,33 @@ export type PluginViewRenderContext = {
       | ((prev: Record<string, unknown>) => Record<string, unknown>)
   ) => void;
   setTitle: (nextTitle: string) => void;
-  openPluginView: (request: OpenPluginViewRequest) => void;
+  openPluginWidget: (request: OpenPluginWidgetRequest) => void;
+  // Legacy compatibility alias.
+  openPluginView: (request: OpenPluginWidgetRequest) => void;
 };
 
-export type PluginViewContribution = {
+export type PluginWidgetContribution = {
   pluginId: string;
-  viewId: string;
+  widgetId: string;
   title: string;
   defaultState: Record<string, unknown>;
-  render: (context: PluginViewRenderContext) => ReactNode;
+  render: (context: PluginWidgetRenderContext) => ReactNode;
 };
 
 export type RendererPlugin = {
   manifest: PluginManifest;
-  views: PluginViewContribution[];
+  widgets: PluginWidgetContribution[];
 };
 
-export type PluginViewTemplate = {
+export type PluginWidgetTemplate = {
   pluginId: string;
-  viewId: string;
+  widgetId: string;
   title: string;
   defaultState: Record<string, unknown>;
 };
+
+// Backward-compatible aliases.
+export type OpenPluginViewRequest = OpenPluginWidgetRequest;
+export type PluginViewRenderContext = PluginWidgetRenderContext;
+export type PluginViewContribution = PluginWidgetContribution;
+export type PluginViewTemplate = PluginWidgetTemplate;
