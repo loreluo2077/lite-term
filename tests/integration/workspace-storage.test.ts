@@ -16,7 +16,7 @@ import {
 function makeSnapshot(id: string, tabId: string): WorkspaceSnapshot {
   return {
     layout: {
-      schemaVersion: 2,
+      schemaVersion: 3,
       id,
       name: `Workspace ${id}`,
       activePaneId: "pane-1",
@@ -39,19 +39,21 @@ function makeSnapshot(id: string, tabId: string): WorkspaceSnapshot {
     tabs: [
       {
         id: tabId,
-        tabKind: "terminal.local",
         title: "Local 1",
-        input: { cols: 120, rows: 30 },
+        widget: {
+          kind: "terminal.local",
+          input: { cols: 120, rows: 30 }
+        },
         restorePolicy: "recreate"
       }
     ]
   };
 }
 
-function makePluginSnapshot(id: string, tabId: string): WorkspaceSnapshot {
+function makeExtensionWidgetSnapshot(id: string, tabId: string): WorkspaceSnapshot {
   return {
     layout: {
-      schemaVersion: 2,
+      schemaVersion: 3,
       id,
       name: `Workspace ${id}`,
       activePaneId: "pane-1",
@@ -67,21 +69,12 @@ function makePluginSnapshot(id: string, tabId: string): WorkspaceSnapshot {
     tabs: [
       {
         id: tabId,
-        tabKind: "plugin.view",
         title: "Markdown",
-        input: {
-          pluginId: "builtin.workspace",
-          viewId: "widget.markdown",
-          state: {
-            source: "inline",
-            content: "# persisted"
-          }
-        },
         widget: {
-          kind: "plugin.view",
+          kind: "extension.widget",
           input: {
-            pluginId: "builtin.workspace",
-            viewId: "widget.markdown",
+            extensionId: "builtin.workspace",
+            widgetId: "widget.markdown",
             state: {
               source: "inline",
               content: "# persisted"
@@ -132,14 +125,13 @@ test("workspace storage: save/load/list/delete/default", async () => {
     assert.equal(listedAfterDelete.workspaces.length, 1);
     assert.equal(listedAfterDelete.workspaces[0]?.id, "dev");
 
-    const pluginWorkspace = makePluginSnapshot("study", "tab-plugin");
-    await saveWorkspaceSnapshot(tempRoot, pluginWorkspace);
-    const loadedPlugin = await loadWorkspaceSnapshot(tempRoot, "study");
-    assert.equal(loadedPlugin.layout.schemaVersion, 3);
-    assert.equal(loadedPlugin.tabs[0]?.widget.kind, "note.markdown");
-    assert.deepEqual(loadedPlugin.tabs[0]?.widget.input, {
+    const extensionWorkspace = makeExtensionWidgetSnapshot("study", "tab-plugin");
+    await saveWorkspaceSnapshot(tempRoot, extensionWorkspace);
+    const loadedExtension = await loadWorkspaceSnapshot(tempRoot, "study");
+    assert.equal(loadedExtension.layout.schemaVersion, 3);
+    assert.equal(loadedExtension.tabs[0]?.widget.kind, "note.markdown");
+    assert.deepEqual(loadedExtension.tabs[0]?.widget.input, {
       extensionId: "builtin.workspace",
-      pluginId: "builtin.workspace",
       widgetId: "note.markdown",
       state: {
         source: "inline",

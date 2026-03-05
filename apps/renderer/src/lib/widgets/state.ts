@@ -20,8 +20,6 @@ type BaseWidgetTabRecord = {
   title: string;
   widgetKind: WidgetKind;
   widget: TabWidget;
-  // Legacy compatibility field retained during tab->widget migration.
-  tabKind?: WidgetKind;
   input: Record<string, unknown>;
   status: WidgetLifecycleStatus;
   wsConnected: boolean;
@@ -31,7 +29,6 @@ type BaseWidgetTabRecord = {
 export type WidgetTabRecord = BaseWidgetTabRecord;
 export type LocalTerminalWidgetTabRecord = WidgetTabRecord & {
   widgetKind: "terminal.local";
-  tabKind?: "terminal.local";
 };
 export type NonTerminalWidgetTabRecord = WidgetTabRecord & {
   widgetKind: Exclude<WidgetKind, "terminal.local">;
@@ -49,15 +46,5 @@ export const activeWidgetTabAtom = atom((get) => {
 export function isLocalTerminalWidgetTab(
   tab: WidgetTabRecord
 ): tab is LocalTerminalWidgetTabRecord {
-  const resolvedKind = tab.widgetKind ?? tab.tabKind ?? tab.widget.kind;
-  return tab.widget.kind === "terminal.local" && resolvedKind === "terminal.local";
+  return tab.widget.kind === "terminal.local" && tab.widgetKind === "terminal.local";
 }
-
-// Backward-compatible aliases for pre-widget naming.
-export type TabLifecycleStatus = WidgetLifecycleStatus;
-export type LocalTerminalTabRecord = LocalTerminalWidgetTabRecord;
-export type NonTerminalTabRecord = NonTerminalWidgetTabRecord;
-export type TabRecord = WidgetTabRecord;
-export const tabsAtom = widgetTabsAtom;
-export const activeTabIdAtom = activeWidgetTabIdAtom;
-export const activeTabAtom = activeWidgetTabAtom;

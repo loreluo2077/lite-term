@@ -20,5 +20,3 @@ export function createNoopWidgetDriver<K extends WidgetKind>(kind: K): WidgetDri
   };
 }
 
-// Backward-compatible alias.
-export const createNoopTabDriver = createNoopWidgetDriver;

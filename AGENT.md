@@ -36,13 +36,12 @@
 - `packages/widget-terminal/src/base`: session adapter 基础抽象
 - `packages/widget-terminal/src/local-terminal`: local terminal widget adapter + worker 入口
 - `packages/shared/src/schemas/base|widget|plugin|workspace`: 协议分层
-- `packages/session-core` / `packages/session-local` / `packages/session-worker`: 兼容层（逐步淘汰）
 - `tests/integration`: 关键集成测试
 
 协议版本约束：
-- workspace snapshot 对外兼容 `v2`，内部落盘统一 `v3(widget)`
-- plugin manifest 对外兼容 `v1(tabKinds)`，内部统一 `v2(widgetKinds)`
-- extension widget input 对外兼容 `pluginId/viewId`，内部统一 `extensionId/widgetId`
+- workspace snapshot 仅支持 `schemaVersion=3(widget)`
+- extension manifest 仅支持 `manifestVersion=2(widgetKinds)`
+- extension widget input 仅支持 `extensionId/widgetId/state`
 
 ## 4. 任务执行流程
 

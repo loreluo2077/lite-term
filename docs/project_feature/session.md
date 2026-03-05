@@ -28,7 +28,6 @@ Session 仅属于 `terminal.local widget` 的运行时资源。
 - `packages/widget-terminal/src/local-terminal`: 管理 WS server、转发 IO、处理生命周期
 - `packages/widget-terminal/src/local-terminal`: node-pty 本地 shell adapter
 - `packages/widget-terminal/src/base`: adapter 抽象
-- `packages/session-core` / `packages/session-local` / `packages/session-worker`: 兼容 shim
 
 ### 3.3 渲染层
 
@@ -73,7 +72,7 @@ Session 仅属于 `terminal.local widget` 的运行时资源。
 - Perf Panel: 输出吞吐、内存采样
 - Debug Sessions: control-plane registry 快照
 
-## 6. 迁移说明（已生效）
+## 6. 数据约束（已生效）
 
 当前运行期逻辑已以 widget 为主：
 
@@ -81,10 +80,7 @@ Session 仅属于 `terminal.local widget` 的运行时资源。
 - 运行态主字段为 `widgetKind`
 - `session` 仅在 local terminal tab 类型上存在
 
-兼容策略：
-
-- 读取兼容 legacy `tabKind/input`
-- 写入统一升级为 `schemaVersion=3` 纯 `widget` 描述
+- workspace snapshot 仅 `schemaVersion=3` + `widget` 描述
 
 ## 7. 自动化测试
 

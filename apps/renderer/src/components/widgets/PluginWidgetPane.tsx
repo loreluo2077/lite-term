@@ -25,7 +25,7 @@ export function PluginWidgetPane({
   if (!widgetInput) {
     return (
       <div className="grid h-full place-items-center rounded-lg border border-red-900/50 bg-zinc-950 p-4 text-sm text-red-200">
-        Invalid plugin tab input payload.
+        Invalid widget input payload.
       </div>
     );
   }
@@ -38,7 +38,7 @@ export function PluginWidgetPane({
           Missing widget contribution: {widgetInput.extensionId}:{widgetInput.widgetId}
         </div>
         <div className="grid place-items-center text-xs text-zinc-500">
-          Install or re-enable the plugin to restore this tab.
+          Install or re-enable the extension to restore this tab.
         </div>
       </div>
     );
@@ -81,9 +81,7 @@ export function PluginWidgetPane({
             });
           },
           setTitle: (nextTitle) => onUpdateTitle(tab.id, nextTitle),
-          openWidget: onOpenWidget,
-          openPluginWidget: onOpenWidget,
-          openPluginView: onOpenWidget
+          openWidget: onOpenWidget
         })}
       </div>
     </div>

@@ -7,11 +7,10 @@ Workspace 是可持久化的协作快照，包含：
 - `layout`: Panel/Pane 树与激活信息
 - `tabs`: Tab 容器描述
 
-当前 Tab 描述采用“兼容迁移”结构：
+当前 Tab 描述为纯 widget 结构：
 
-- 主语义: `widget.kind + widget.input`
-- 兼容字段: `tabKind + input`（仅用于读取旧快照）
-- 当前写路径: 统一写 `schemaVersion=3`
+- `widget.kind + widget.input`
+- snapshot 固定 `schemaVersion=3`
 
 ## 2. 本地存储模型
 
@@ -79,7 +78,7 @@ Workspace 是可持久化的协作快照，包含：
 ## 7. 自动化测试
 
 - `tests/integration/workspace-schema.test.ts`
-- 覆盖 snapshot 结构约束与 `tab.widget` 兼容
+- 覆盖 snapshot 结构约束与 widget 归一化
 - `tests/integration/workspace-storage.test.ts`
 - 覆盖 save/load/list/close/delete/default 流程
 - `tests/integration/workspace-order.test.ts`
@@ -100,7 +99,7 @@ Workspace 是可持久化的协作快照，包含：
 - workspace 切换稳定，无错误覆盖
 - 热切换不丢运行态，冷启动按策略恢复
 - 自动保存生效，异常退出后可恢复最近可用状态
-- 旧快照（无 widget 字段）可继续加载
+- 非法旧协议快照会被拒绝并暴露错误
 
 ## 10. 当前限制
 

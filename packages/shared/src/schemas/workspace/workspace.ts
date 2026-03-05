@@ -1,11 +1,8 @@
 import { z } from "zod";
 import {
-  legacyTabDescriptorSchema,
-  normalizeLegacyTabDescriptor,
   normalizeWidgetTabDescriptor,
   tabDescriptorSchema,
   widgetTabDescriptorSchema,
-  type LegacyTabDescriptor,
   type WidgetTabDescriptor
 } from "../widget/tab-descriptor";
 
@@ -84,55 +81,28 @@ const workspaceLayoutBaseSchema = {
   overlays: overlayLayoutSchema.optional()
 };
 
-export const workspaceLayoutV2Schema = z.object({
-  schemaVersion: z.literal(2),
-  ...workspaceLayoutBaseSchema
-});
-
 export const workspaceLayoutV3Schema = z.object({
   schemaVersion: z.literal(3),
   ...workspaceLayoutBaseSchema
 });
 
-export const workspaceLayoutSchema = z.union([
-  workspaceLayoutV2Schema,
-  workspaceLayoutV3Schema
-]);
-
-export const workspaceSnapshotV2Schema = z.object({
-  layout: workspaceLayoutV2Schema,
-  tabs: z.array(legacyTabDescriptorSchema)
-});
+export const workspaceLayoutSchema = workspaceLayoutV3Schema;
 
 export const workspaceSnapshotV3Schema = z.object({
   layout: workspaceLayoutV3Schema,
   tabs: z.array(widgetTabDescriptorSchema)
 });
 
-export const workspaceSnapshotSchema = z.union([
-  workspaceSnapshotV2Schema,
-  workspaceSnapshotV3Schema
-]);
+export const workspaceSnapshotSchema = workspaceSnapshotV3Schema;
 
 export function normalizeWorkspaceSnapshot(snapshot: WorkspaceSnapshot): WorkspaceSnapshotV3 {
-  if (snapshot.layout.schemaVersion === 3) {
-    return {
-      layout: {
-        ...snapshot.layout,
-        schemaVersion: 3
-      },
-      tabs: snapshot.tabs.map((descriptor) =>
-        normalizeWidgetTabDescriptor(descriptor as WidgetTabDescriptor)
-      )
-    };
-  }
   return {
     layout: {
       ...snapshot.layout,
       schemaVersion: 3
     },
     tabs: snapshot.tabs.map((descriptor) =>
-      normalizeLegacyTabDescriptor(descriptor as LegacyTabDescriptor)
+      normalizeWidgetTabDescriptor(descriptor as WidgetTabDescriptor)
     )
   };
 }
@@ -141,13 +111,12 @@ export function toLatestWorkspaceSnapshot(snapshot: WorkspaceSnapshot): Workspac
   return normalizeWorkspaceSnapshot(snapshot);
 }
 
-export function normalizeTabDescriptorsToWidgetV3(tabs: Array<z.infer<typeof tabDescriptorSchema>>): WidgetTabDescriptor[] {
-  return tabs.map((descriptor) => {
-    if ("widget" in descriptor && !("tabKind" in descriptor)) {
-      return normalizeWidgetTabDescriptor(descriptor as WidgetTabDescriptor);
-    }
-    return normalizeLegacyTabDescriptor(descriptor as LegacyTabDescriptor);
-  });
+export function normalizeTabDescriptorsToWidgetV3(
+  tabs: Array<z.infer<typeof tabDescriptorSchema>>
+): WidgetTabDescriptor[] {
+  return tabs.map((descriptor) =>
+    normalizeWidgetTabDescriptor(descriptor as WidgetTabDescriptor)
+  );
 }
 
 export const workspaceSnapshotLatestSchema = workspaceSnapshotV3Schema;
@@ -186,10 +155,8 @@ export type PaneDirection = z.infer<typeof paneDirectionSchema>;
 export type FloatingPanelDescriptor = z.infer<typeof floatingPanelDescriptorSchema>;
 export type OverlayLayout = z.infer<typeof overlayLayoutSchema>;
 export type WorkspaceLayout = z.infer<typeof workspaceLayoutSchema>;
-export type WorkspaceLayoutV2 = z.infer<typeof workspaceLayoutV2Schema>;
 export type WorkspaceLayoutV3 = z.infer<typeof workspaceLayoutV3Schema>;
 export type WorkspaceSnapshot = z.infer<typeof workspaceSnapshotSchema>;
-export type WorkspaceSnapshotV2 = z.infer<typeof workspaceSnapshotV2Schema>;
 export type WorkspaceSnapshotV3 = z.infer<typeof workspaceSnapshotV3Schema>;
 export type WorkspaceMeta = z.infer<typeof workspaceMetaSchema>;
 export type WorkspaceIndex = z.infer<typeof workspaceIndexSchema>;

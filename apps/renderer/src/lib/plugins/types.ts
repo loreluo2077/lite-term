@@ -3,11 +3,7 @@ import type { ExtensionManifest, ExtensionWidgetInput } from "@localterm/shared"
 
 export type OpenWidgetRequest = {
   extensionId?: string;
-  // Legacy compatibility field.
-  pluginId?: string;
-  widgetId?: string;
-  // Legacy compatibility field.
-  viewId?: string;
+  widgetId: string;
   title?: string;
   state?: Record<string, unknown>;
   paneId?: string;
@@ -26,16 +22,10 @@ export type WidgetRenderContext = {
   ) => void;
   setTitle: (nextTitle: string) => void;
   openWidget: (request: OpenWidgetRequest) => void;
-  // Alias kept for compatibility.
-  openPluginWidget: (request: OpenWidgetRequest) => void;
-  // Legacy compatibility alias.
-  openPluginView: (request: OpenWidgetRequest) => void;
 };
 
 export type WidgetContribution = {
   extensionId: string;
-  // Legacy compatibility field.
-  pluginId?: string;
   widgetId: string;
   title: string;
   defaultState: Record<string, unknown>;
@@ -49,20 +39,7 @@ export type RendererExtension = {
 
 export type WidgetTemplate = {
   extensionId: string;
-  // Legacy compatibility field.
-  pluginId?: string;
   widgetId: string;
   title: string;
   defaultState: Record<string, unknown>;
 };
-
-// Backward-compatible aliases.
-export type OpenPluginWidgetRequest = OpenWidgetRequest;
-export type OpenPluginViewRequest = OpenWidgetRequest;
-export type PluginWidgetRenderContext = WidgetRenderContext;
-export type PluginViewRenderContext = WidgetRenderContext;
-export type PluginWidgetContribution = WidgetContribution;
-export type PluginViewContribution = WidgetContribution;
-export type PluginWidgetTemplate = WidgetTemplate;
-export type PluginViewTemplate = WidgetTemplate;
-export type RendererPlugin = RendererExtension;

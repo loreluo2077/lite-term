@@ -317,7 +317,6 @@ function parseStartupScriptDraftsFromInput(input: Record<string, unknown>): Star
 function defaultNoteWidgetInput(): ExtensionWidgetInput {
   return {
     extensionId: "builtin.workspace",
-    pluginId: "builtin.workspace",
     widgetId: "note.markdown",
     state: {
       content: "# Notes\n\n",
@@ -327,16 +326,16 @@ function defaultNoteWidgetInput(): ExtensionWidgetInput {
   };
 }
 
-function normalizePluginWidgetInput(input: unknown): ExtensionWidgetInput {
+function normalizeExtensionWidgetInput(input: unknown): ExtensionWidgetInput {
   return parseWidgetInput(input) ?? defaultNoteWidgetInput();
 }
 
-function resolvePluginWidgetKind(input: ExtensionWidgetInput): WidgetKind {
-  if (input.extensionId !== "builtin.workspace") return "plugin.widget";
+function resolveExtensionWidgetKind(input: ExtensionWidgetInput): WidgetKind {
+  if (input.extensionId !== "builtin.workspace") return "extension.widget";
   if (input.widgetId === "file.browser") return "file.browser";
   if (input.widgetId === "widget.markdown") return "note.markdown";
   if (input.widgetId === "note.markdown") return "note.markdown";
-  return "plugin.widget";
+  return "extension.widget";
 }
 
 function toPersistedTabDescriptors(records: WidgetTabRecord[]): WidgetTabDescriptor[] {
@@ -355,19 +354,15 @@ function toPersistedTabDescriptors(records: WidgetTabRecord[]): WidgetTabDescrip
         } as WidgetTabDescriptor;
       case "file.browser":
       case "note.markdown":
-      case "plugin.widget":
-      case "plugin.view":
+      case "extension.widget":
         {
-          const parsedInput = normalizePluginWidgetInput(widget.input);
-          const persistedKind =
-            widget.kind === "plugin.view" || widget.kind === "plugin.widget"
-              ? resolvePluginWidgetKind(parsedInput)
-              : widget.kind;
+          const parsedInput = normalizeExtensionWidgetInput(widget.input);
+          const persistedKind = resolveExtensionWidgetKind(parsedInput);
           return {
             id: record.id,
             title: record.title,
             widget: {
-              kind: persistedKind as "plugin.widget" | "file.browser" | "note.markdown",
+              kind: persistedKind as "extension.widget" | "file.browser" | "note.markdown",
               input: parsedInput
             },
             restorePolicy: "manual"
@@ -418,8 +413,8 @@ function toPersistedTabDescriptors(records: WidgetTabRecord[]): WidgetTabDescrip
           id: record.id,
           title: record.title,
           widget: {
-            kind: "plugin.widget",
-            input: normalizePluginWidgetInput(record.widget.input)
+            kind: "extension.widget",
+            input: normalizeExtensionWidgetInput(record.widget.input)
           },
           restorePolicy: "manual"
         } as WidgetTabDescriptor;
@@ -782,15 +777,10 @@ export function App() {
   ]);
 
   const openWidgetTab = useCallback(async (request: OpenWidgetRequest) => {
-    const requestWidgetId = request.widgetId ?? request.viewId;
-    if (!requestWidgetId) {
-      console.error("widget id missing", request);
-      return "";
-    }
     const template = widgetTemplates.find(
       (entry) =>
-        entry.widgetId === requestWidgetId &&
-        (request.extensionId ? entry.extensionId === request.extensionId : request.pluginId ? entry.extensionId === request.pluginId : true)
+        entry.widgetId === request.widgetId &&
+        (request.extensionId ? entry.extensionId === request.extensionId : true)
     );
     if (!template) {
       console.error("widget template not found", request);
@@ -804,7 +794,7 @@ export function App() {
       activate: boolean;
       paneId?: string;
     } = {
-      widgetKind: resolvePluginWidgetKind(input),
+      widgetKind: resolveExtensionWidgetKind(input),
       title: request.title?.trim() || template.title,
       input: input as Record<string, unknown>,
       activate: true
@@ -2041,8 +2031,7 @@ export function App() {
                       onStatus={updateStatus}
                       onWsConnected={updateWsConnected}
                     />
-                  ) : tab.widget.kind === "plugin.widget" ||
-                    tab.widget.kind === "plugin.view" ||
+                  ) : tab.widget.kind === "extension.widget" ||
                     tab.widget.kind === "file.browser" ||
                     tab.widget.kind === "note.markdown" ? (
                     <PluginWidgetPane
@@ -2278,8 +2267,7 @@ export function App() {
               );
             }
             if (
-              tab.widget.kind === "plugin.widget" ||
-              tab.widget.kind === "plugin.view" ||
+              tab.widget.kind === "extension.widget" ||
               tab.widget.kind === "file.browser" ||
               tab.widget.kind === "note.markdown"
             ) {

@@ -1,7 +1,7 @@
 import type { WidgetKind } from "@localterm/shared";
 import { localTerminalWidgetDriver } from "./drivers/local-terminal-widget-driver";
 import { createNoopWidgetDriver } from "./drivers/noop-widget-driver";
-import { pluginViewWidgetDriver } from "./drivers/plugin-view-widget-driver";
+import { extensionWidgetDriver } from "./drivers/extension-widget-driver";
 import type { WidgetDriver } from "./types";
 
 const widgetDriverRegistry = new Map<WidgetKind, WidgetDriver>();
@@ -23,16 +23,10 @@ export function listRegisteredWidgetKinds(): WidgetKind[] {
 }
 
 registerWidgetDriver(localTerminalWidgetDriver);
-registerWidgetDriver(pluginViewWidgetDriver);
-registerWidgetDriver(createNoopWidgetDriver("plugin.view"));
+registerWidgetDriver(extensionWidgetDriver);
 registerWidgetDriver(createNoopWidgetDriver("terminal.ssh"));
 registerWidgetDriver(createNoopWidgetDriver("web.page"));
 registerWidgetDriver(createNoopWidgetDriver("web.browser"));
 registerWidgetDriver(createNoopWidgetDriver("widget.react"));
 registerWidgetDriver(createNoopWidgetDriver("file.browser"));
 registerWidgetDriver(createNoopWidgetDriver("note.markdown"));
-
-// Backward-compatible aliases.
-export const registerTabDriver = registerWidgetDriver;
-export const getTabDriver = getWidgetDriver;
-export const listRegisteredTabKinds = listRegisteredWidgetKinds;

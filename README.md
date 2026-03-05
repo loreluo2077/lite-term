@@ -30,17 +30,11 @@ Lo-Fi Room 是一个 Electron + React 的本地应用，核心目标是把多终
 - `apps/renderer/src/lib/widgets/state.ts`: widget 运行态（tab 容器 + widget 内容 + terminal session 归属）
 - `apps/renderer/src/lib/widgets/drivers/*`: widget driver（local terminal / extension widget / noop）
 - `apps/renderer/src/components/widgets/*`: widget 视图组件
-- 兼容层仍保留：
-- `apps/renderer/src/lib/atoms/session.ts`
-- `apps/renderer/src/lib/tab-drivers/*`
-- `apps/renderer/src/components/TerminalPane.tsx`
-- `apps/renderer/src/components/PluginTabPane.tsx`
 
 说明：
-- 运行态主字段已切换为 `widgetKind`，`tabKind` 仅作为兼容读取保留。
 - 运行时只有 widget：内置能力是 builtin widget，外部扩展通过 extension 包贡献 widget。
 
-## Packages 分层（base / widget / plugin）
+## Packages 分层（base / widget / extension）
 
 - Base 能力：
 - `packages/widget-terminal/src/base`
@@ -50,17 +44,16 @@ Lo-Fi Room 是一个 Electron + React 的本地应用，核心目标是把多终
 - `packages/shared/src/schemas/widget`
 - `packages/control-plane/src/widgets/local-terminal`
 - `packages/widget-terminal/src/local-terminal`
-- Plugin 能力：
+- Extension 能力：
 - `packages/shared/src/schemas/plugin`
 
-协议迁移：
-- workspace snapshot: `v2(tabKind/input)` 读兼容，写统一 `v3(widget)`
-- plugin manifest: `v1(tabKinds)` 读兼容，解析后统一升级为 `v2(widgetKinds)`
-- extension widget input: 读兼容 `pluginId/viewId`，内部统一 `extensionId/widgetId`
+协议约束：
+- workspace snapshot: 仅 `schemaVersion=3`（纯 `widget`）
+- extension manifest: 仅 `manifestVersion=2`（`widgetKinds`）
+- extension widget input: 仅 `extensionId/widgetId/state`
 
 说明：
-- `packages/session-core` / `packages/session-local` / `packages/session-worker` 现为兼容 shim
-- 新实现统一收敛到 `packages/widget-terminal`
+- 会话核心实现统一收敛在 `packages/widget-terminal`
 
 ## 工程实践：新功能默认带测试
 

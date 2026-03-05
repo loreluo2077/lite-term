@@ -34,14 +34,13 @@
 ### 3.2 核心包层
 
 - `packages/shared/src/schemas/base`: 基础协议（control-plane / worker-ipc / session-events / fs / metrics）
-- `packages/shared/src/schemas/widget`: widget 协议（widget descriptor + tab descriptor 兼容层）
-- `packages/shared/src/schemas/plugin`: plugin 协议（manifest / rpc）
+- `packages/shared/src/schemas/widget`: widget 协议（widget descriptor + tab descriptor）
+- `packages/shared/src/schemas/plugin`: extension 协议（manifest / rpc）
 - `packages/shared/src/schemas/workspace`: workspace 协议（layout + snapshot）
 - `packages/control-plane/src/port` + `src/registry`: base 控制平面能力
 - `packages/control-plane/src/widgets/local-terminal`: local terminal widget 控制逻辑
 - `packages/widget-terminal/src/base`: session adapter 抽象（base）
 - `packages/widget-terminal/src/local-terminal`: local terminal worker + adapter（node-pty）
-- `packages/session-core` / `packages/session-local` / `packages/session-worker`: 兼容 shim
 
 ## 4. 核心数据流
 
@@ -66,27 +65,15 @@
 3. desktop 写入 `workspace-store/workspaces/<id>.json`
 4. `index.json` 维护顺序、名称、关闭状态与访问时间
 
-## 5. 迁移状态（tab -> widget 语义收敛）
+## 5. 当前协议状态
 
-当前采用兼容策略：
-
-- 运行态与渲染逻辑以 `tab.widget.kind/input` 为主
-- 运行态主字段为 `widgetKind`（`tabKind` 仅兼容读取）
-- extension 只负责分发与权限，运行态统一为 widget：
-- 内置 widget：`file.browser` / `note.markdown`
-- 外部 widget（兼容 kind: `plugin.widget`）：`extensionId + widgetId + state`
-- snapshot 写路径固定写 `schemaVersion=3` + 纯 `widget` 描述
-- snapshot 读路径支持：
-- `v3` 新格式（纯 `widget`）
-- `v2` 旧格式（`tabKind/input`，读取时自动迁移为 `widget`）
-- plugin manifest 读路径支持：
-- `v2` 新格式（`manifestVersion=2` + `widgetKinds`）
-- `v1` 旧格式（`tabKinds`，解析时自动迁移为 `v2`）
-- extension widget input 读路径支持：
-- 新格式 `extensionId + widgetId`
-- 旧格式 `pluginId + viewId`（读取时自动迁移）
-
-这样可以保证历史 workspace 快照可继续加载。
+- 运行态与渲染逻辑统一使用 `tab.widget.kind/input`
+- 运行态主字段统一为 `widgetKind`
+- 内置 widget：`terminal.local` / `file.browser` / `note.markdown`
+- 外部 widget：`extension.widget`（`extensionId + widgetId + state`）
+- workspace snapshot：仅 `schemaVersion=3` + 纯 `widget` 描述
+- extension manifest：仅 `manifestVersion=2` + `widgetKinds`
+- extension widget input：仅 `extensionId + widgetId + state`
 
 ## 6. 关键设计点
 
@@ -98,7 +85,7 @@
 ## 7. 扩展点
 
 - 新 Widget 类型：
-- 扩展 `WidgetDescriptor`（必要时补 legacy `tabKind` 映射）
+- 扩展 `WidgetDescriptor`
 - 实现对应渲染组件与 driver
 - 新会话类型：
 - 在 session adapter 层扩展（如 ssh），再接入对应 widget

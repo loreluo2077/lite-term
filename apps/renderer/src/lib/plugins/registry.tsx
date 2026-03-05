@@ -1,6 +1,6 @@
 import {
   extensionManifestSchema,
-  pluginWidgetInputSchema,
+  extensionWidgetInputSchema,
   type ExtensionWidgetInput
 } from "@localterm/shared";
 import { FileBrowserPluginView } from "../../components/plugins/FileBrowserPluginView";
@@ -12,8 +12,6 @@ import type {
 } from "./types";
 
 export const BUILTIN_WORKSPACE_EXTENSION_ID = "builtin.workspace";
-// Backward-compatible alias.
-export const BUILTIN_WORKSPACE_PLUGIN_ID = BUILTIN_WORKSPACE_EXTENSION_ID;
 
 const builtinWorkspaceExtension: RendererExtension = {
   manifest: extensionManifestSchema.parse({
@@ -66,12 +64,11 @@ function normalizeWidgetId(extensionId: string, widgetId: string) {
 const widgetContributionMap = new Map<string, WidgetContribution>(
   extensions.flatMap((extension) =>
     extension.widgets.map((widget) => {
-      const extensionId = widget.extensionId ?? widget.pluginId ?? extension.manifest.id;
+      const extensionId = widget.extensionId || extension.manifest.id;
       const normalizedWidgetId = normalizeWidgetId(extensionId, widget.widgetId);
       return [`${extensionId}:${normalizedWidgetId}`, {
         ...widget,
         extensionId,
-        pluginId: extensionId,
         widgetId: normalizedWidgetId
       }] as const;
     })
@@ -81,13 +78,12 @@ const widgetContributionMap = new Map<string, WidgetContribution>(
 export function listWidgetTemplates(): WidgetTemplate[] {
   return extensions.flatMap((extension) =>
     extension.widgets.map((widget) => {
-      const extensionId = widget.extensionId ?? widget.pluginId ?? extension.manifest.id;
+      const extensionId = widget.extensionId || extension.manifest.id;
       return {
-      extensionId,
-      pluginId: extensionId,
-      widgetId: normalizeWidgetId(extensionId, widget.widgetId),
-      title: widget.title,
-      defaultState: widget.defaultState
+        extensionId,
+        widgetId: normalizeWidgetId(extensionId, widget.widgetId),
+        title: widget.title,
+        defaultState: widget.defaultState
       };
     })
   );
@@ -99,10 +95,9 @@ export function getWidgetContribution(extensionId: string, widgetId: string) {
 }
 
 export function makeWidgetInput(template: WidgetTemplate, state?: Record<string, unknown>): ExtensionWidgetInput {
-  const extensionId = template.extensionId ?? template.pluginId ?? "";
-  return pluginWidgetInputSchema.parse({
+  const extensionId = template.extensionId;
+  return extensionWidgetInputSchema.parse({
     extensionId,
-    pluginId: extensionId,
     widgetId: normalizeWidgetId(extensionId, template.widgetId),
     state: {
       ...template.defaultState,
@@ -112,28 +107,11 @@ export function makeWidgetInput(template: WidgetTemplate, state?: Record<string,
 }
 
 export function parseWidgetInput(input: unknown): ExtensionWidgetInput | null {
-  const parsed = pluginWidgetInputSchema.safeParse(input);
+  const parsed = extensionWidgetInputSchema.safeParse(input);
   if (!parsed.success) return null;
-  const extensionId = parsed.data.extensionId ?? parsed.data.pluginId;
-  if (!extensionId) return null;
   return {
     ...parsed.data,
-    extensionId,
-    pluginId: extensionId,
-    widgetId: normalizeWidgetId(extensionId, parsed.data.widgetId)
+    extensionId: parsed.data.extensionId,
+    widgetId: normalizeWidgetId(parsed.data.extensionId, parsed.data.widgetId)
   };
 }
-
-// Backward-compatible aliases.
-export const listWidgetContributions = listWidgetTemplates;
-export const getWidgetViewContribution = getWidgetContribution;
-export const makeWidgetViewInput = makeWidgetInput;
-export const parseWidgetViewInput = parseWidgetInput;
-export const listPluginWidgetTemplates = listWidgetTemplates;
-export const getPluginWidgetContribution = getWidgetContribution;
-export const makePluginWidgetInput = makeWidgetInput;
-export const parsePluginWidgetInput = parseWidgetInput;
-export const listPluginViewTemplates = listWidgetTemplates;
-export const getPluginViewContribution = getWidgetContribution;
-export const makePluginViewInput = makeWidgetInput;
-export const parsePluginViewInput = parseWidgetInput;

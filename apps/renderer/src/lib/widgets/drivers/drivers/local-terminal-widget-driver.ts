@@ -36,5 +36,3 @@ export const localTerminalWidgetDriver: WidgetDriver<"terminal.local"> = {
   }
 };
 
-// Backward-compatible alias.
-export const localTerminalTabDriver = localTerminalWidgetDriver;

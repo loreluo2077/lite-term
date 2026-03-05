@@ -12,7 +12,7 @@ import {
 function makeSnapshot(id: string, name: string): WorkspaceSnapshot {
   return {
     layout: {
-      schemaVersion: 2,
+      schemaVersion: 3,
       id,
       name,
       activePaneId: "pane-1",

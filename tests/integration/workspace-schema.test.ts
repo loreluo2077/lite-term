@@ -1,16 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  extensionManifestSchema,
+  extensionRpcResponseSchema,
   normalizeWorkspaceSnapshot,
-  pluginManifestSchema,
-  pluginRpcResponseSchema,
   workspaceSnapshotSchema
 } from "@localterm/shared";
 
-test("workspace snapshot schema accepts valid v2 payload", () => {
+test("workspace snapshot schema accepts valid v3 terminal payload", () => {
   const parsed = workspaceSnapshotSchema.parse({
     layout: {
-      schemaVersion: 2,
+      schemaVersion: 3,
       id: "default",
       name: "Default",
       activePaneId: "pane-1",
@@ -33,124 +33,7 @@ test("workspace snapshot schema accepts valid v2 payload", () => {
     tabs: [
       {
         id: "tab-1",
-        tabKind: "terminal.local",
         title: "Local 1",
-        input: { cols: 120, rows: 30 },
-        restorePolicy: "recreate"
-      }
-    ]
-  });
-
-  assert.equal(parsed.layout.schemaVersion, 2);
-  assert.equal(parsed.tabs.length, 1);
-});
-
-test("workspace snapshot schema accepts plugin.view state payload", () => {
-  const parsed = workspaceSnapshotSchema.parse({
-    layout: {
-      schemaVersion: 2,
-      id: "study",
-      name: "Study",
-      activePaneId: "pane-1",
-      createdAt: 1,
-      updatedAt: 1,
-      root: {
-        id: "pane-1",
-        type: "leaf",
-        tabIds: ["tab-plugin-1"],
-        activeTabId: "tab-plugin-1"
-      }
-    },
-    tabs: [
-      {
-        id: "tab-plugin-1",
-        tabKind: "plugin.view",
-        title: "Markdown",
-        input: {
-          pluginId: "builtin.workspace",
-          viewId: "widget.markdown",
-          state: {
-            source: "inline",
-            content: "# Notes"
-          }
-        },
-        restorePolicy: "manual"
-      }
-    ]
-  });
-
-  assert.ok(parsed.tabs[0] && "tabKind" in parsed.tabs[0]);
-  if (!parsed.tabs[0] || !("tabKind" in parsed.tabs[0])) return;
-  assert.equal(parsed.tabs[0].tabKind, "plugin.view");
-});
-
-test("workspace snapshot schema accepts terminal startup scripts payload", () => {
-  const parsed = workspaceSnapshotSchema.parse({
-    layout: {
-      schemaVersion: 2,
-      id: "scripts",
-      name: "scripts",
-      activePaneId: "pane-1",
-      createdAt: 1,
-      updatedAt: 1,
-      root: {
-        id: "pane-1",
-        type: "leaf",
-        tabIds: ["tab-1"],
-        activeTabId: "tab-1"
-      }
-    },
-    tabs: [
-      {
-        id: "tab-1",
-        tabKind: "terminal.local",
-        title: "Local 1",
-        input: {
-          cols: 120,
-          rows: 30,
-          startupScripts: [
-            {
-              id: "script-1",
-              command: "echo ready",
-              delayMs: 500,
-              enabled: true
-            }
-          ]
-        },
-        restorePolicy: "recreate"
-      }
-    ]
-  });
-
-  assert.ok(parsed.tabs[0] && "tabKind" in parsed.tabs[0]);
-  if (!parsed.tabs[0] || !("tabKind" in parsed.tabs[0])) return;
-  if (parsed.tabs[0].tabKind !== "terminal.local") return;
-  assert.equal(parsed.tabs[0].input.startupScripts.length, 1);
-  assert.equal(parsed.tabs[0].input.startupScripts[0]?.command, "echo ready");
-});
-
-test("workspace snapshot schema accepts tab.widget payload (tab shell + widget content)", () => {
-  const parsed = workspaceSnapshotSchema.parse({
-    layout: {
-      schemaVersion: 2,
-      id: "widgetized",
-      name: "widgetized",
-      activePaneId: "pane-1",
-      createdAt: 1,
-      updatedAt: 1,
-      root: {
-        id: "pane-1",
-        type: "leaf",
-        tabIds: ["tab-1"],
-        activeTabId: "tab-1"
-      }
-    },
-    tabs: [
-      {
-        id: "tab-1",
-        tabKind: "terminal.local",
-        title: "Local 1",
-        input: { cols: 120, rows: 30 },
         widget: {
           kind: "terminal.local",
           input: { cols: 120, rows: 30 }
@@ -160,12 +43,12 @@ test("workspace snapshot schema accepts tab.widget payload (tab shell + widget c
     ]
   });
 
-  if (!parsed.tabs[0] || !("tabKind" in parsed.tabs[0])) return;
-  if (parsed.tabs[0].tabKind !== "terminal.local") return;
-  assert.equal(parsed.tabs[0].widget?.kind, "terminal.local");
+  assert.equal(parsed.layout.schemaVersion, 3);
+  assert.equal(parsed.tabs.length, 1);
+  assert.equal(parsed.tabs[0]?.widget.kind, "terminal.local");
 });
 
-test("workspace snapshot schema accepts valid v3 widget payload", () => {
+test("workspace snapshot schema accepts builtin file widget payload", () => {
   const parsed = workspaceSnapshotSchema.parse({
     layout: {
       schemaVersion: 3,
@@ -188,8 +71,8 @@ test("workspace snapshot schema accepts valid v3 widget payload", () => {
         widget: {
           kind: "file.browser",
           input: {
-            pluginId: "builtin.workspace",
-            viewId: "file.browser",
+            extensionId: "builtin.workspace",
+            widgetId: "file.browser",
             state: {}
           }
         },
@@ -198,17 +81,15 @@ test("workspace snapshot schema accepts valid v3 widget payload", () => {
     ]
   });
 
-  assert.equal(parsed.layout.schemaVersion, 3);
-  if (!parsed.tabs[0] || !("widget" in parsed.tabs[0])) return;
-  assert.equal(parsed.tabs[0].widget.kind, "file.browser");
+  assert.equal(parsed.tabs[0]?.widget.kind, "file.browser");
 });
 
-test("workspace snapshot schema accepts plugin.widget payload", () => {
+test("workspace snapshot schema accepts extension.widget payload", () => {
   const parsed = workspaceSnapshotSchema.parse({
     layout: {
       schemaVersion: 3,
-      id: "plugin-widget",
-      name: "plugin-widget",
+      id: "extension-widget",
+      name: "extension-widget",
       activePaneId: "pane-1",
       createdAt: 1,
       updatedAt: 1,
@@ -224,9 +105,9 @@ test("workspace snapshot schema accepts plugin.widget payload", () => {
         id: "tab-1",
         title: "Todo",
         widget: {
-          kind: "plugin.widget",
+          kind: "extension.widget",
           input: {
-            pluginId: "external.todo",
+            extensionId: "external.todo",
             widgetId: "todo.board",
             state: {}
           }
@@ -236,16 +117,15 @@ test("workspace snapshot schema accepts plugin.widget payload", () => {
     ]
   });
 
-  if (!parsed.tabs[0] || !("widget" in parsed.tabs[0])) return;
-  assert.equal(parsed.tabs[0].widget.kind, "plugin.widget");
+  assert.equal(parsed.tabs[0]?.widget.kind, "extension.widget");
 });
 
-test("normalizeWorkspaceSnapshot upgrades v3 legacy plugin.view to widget semantics", () => {
+test("normalizeWorkspaceSnapshot normalizes builtin markdown id", () => {
   const parsed = workspaceSnapshotSchema.parse({
     layout: {
       schemaVersion: 3,
-      id: "legacy-v3-plugin-view",
-      name: "legacy-v3-plugin-view",
+      id: "normalize-markdown",
+      name: "normalize-markdown",
       activePaneId: "pane-1",
       createdAt: 1,
       updatedAt: 1,
@@ -261,10 +141,10 @@ test("normalizeWorkspaceSnapshot upgrades v3 legacy plugin.view to widget semant
         id: "tab-1",
         title: "Markdown",
         widget: {
-          kind: "plugin.view",
+          kind: "extension.widget",
           input: {
-            pluginId: "builtin.workspace",
-            viewId: "widget.markdown",
+            extensionId: "builtin.workspace",
+            widgetId: "widget.markdown",
             state: {}
           }
         },
@@ -274,14 +154,36 @@ test("normalizeWorkspaceSnapshot upgrades v3 legacy plugin.view to widget semant
   });
 
   const normalized = normalizeWorkspaceSnapshot(parsed);
-  if (!normalized.tabs[0]) return;
-  assert.equal(normalized.tabs[0].widget.kind, "note.markdown");
-  assert.deepEqual(normalized.tabs[0].widget.input, {
+  assert.equal(normalized.tabs[0]?.widget.kind, "note.markdown");
+  assert.deepEqual(normalized.tabs[0]?.widget.input, {
     extensionId: "builtin.workspace",
-    pluginId: "builtin.workspace",
     widgetId: "note.markdown",
     state: {}
   });
+});
+
+test("workspace snapshot schema rejects legacy v2 payload", () => {
+  assert.throws(
+    () =>
+      workspaceSnapshotSchema.parse({
+        layout: {
+          schemaVersion: 2,
+          id: "legacy",
+          name: "legacy",
+          activePaneId: "pane-1",
+          createdAt: 1,
+          updatedAt: 1,
+          root: {
+            id: "pane-1",
+            type: "leaf",
+            tabIds: [],
+            activeTabId: ""
+          }
+        },
+        tabs: []
+      }),
+    /Invalid literal value/
+  );
 });
 
 test("workspace snapshot schema rejects split sizes that do not sum to 1", () => {
@@ -289,7 +191,7 @@ test("workspace snapshot schema rejects split sizes that do not sum to 1", () =>
     () =>
       workspaceSnapshotSchema.parse({
         layout: {
-          schemaVersion: 2,
+          schemaVersion: 3,
           id: "bad-layout",
           name: "bad-layout",
           activePaneId: "pane-1",
@@ -320,14 +222,14 @@ test("workspace snapshot schema rejects split sizes that do not sum to 1", () =>
   );
 });
 
-test("workspace snapshot schema rejects mismatched widget kind and tabKind", () => {
+test("workspace snapshot schema rejects extension.widget without extensionId", () => {
   assert.throws(
     () =>
       workspaceSnapshotSchema.parse({
         layout: {
-          schemaVersion: 2,
-          id: "bad-widget-kind",
-          name: "bad-widget-kind",
+          schemaVersion: 3,
+          id: "bad-widget",
+          name: "bad-widget",
           activePaneId: "pane-1",
           createdAt: 1,
           updatedAt: 1,
@@ -341,64 +243,26 @@ test("workspace snapshot schema rejects mismatched widget kind and tabKind", () 
         tabs: [
           {
             id: "tab-1",
-            tabKind: "terminal.local",
-            title: "Local 1",
-            input: { cols: 120, rows: 30 },
+            title: "Broken",
             widget: {
-              kind: "plugin.view",
+              kind: "extension.widget",
               input: {
-                pluginId: "builtin.workspace",
-                viewId: "widget.markdown",
+                widgetId: "todo.board",
                 state: {}
               }
             },
-            restorePolicy: "recreate"
+            restorePolicy: "manual"
           }
         ]
       }),
-    /Invalid literal value/
+    /extensionId/
   );
 });
 
-test("workspace snapshot schema fills default plugin.view state when omitted", () => {
-  const parsed = workspaceSnapshotSchema.parse({
-    layout: {
-      schemaVersion: 2,
-      id: "plugin-default-state",
-      name: "plugin-default-state",
-      activePaneId: "pane-1",
-      createdAt: 1,
-      updatedAt: 1,
-      root: {
-        id: "pane-1",
-        type: "leaf",
-        tabIds: ["tab-1"],
-        activeTabId: "tab-1"
-      }
-    },
-    tabs: [
-      {
-        id: "tab-1",
-        tabKind: "plugin.view",
-        title: "Markdown",
-        input: {
-          pluginId: "builtin.workspace",
-          viewId: "widget.markdown"
-        },
-        restorePolicy: "manual"
-      }
-    ]
-  });
-
-  if (!parsed.tabs[0] || !("tabKind" in parsed.tabs[0])) return;
-  if (parsed.tabs[0].tabKind !== "plugin.view") return;
-  assert.deepEqual(parsed.tabs[0].input.state, {});
-});
-
-test("plugin rpc response requires error when ok=false", () => {
+test("extension rpc response requires error when ok=false", () => {
   assert.throws(
     () =>
-      pluginRpcResponseSchema.parse({
+      extensionRpcResponseSchema.parse({
         requestId: "req-1",
         ok: false
       }),
@@ -406,35 +270,36 @@ test("plugin rpc response requires error when ok=false", () => {
   );
 });
 
-test("plugin manifest migrates v1 tabKinds to v2 widgetKinds", () => {
-  const parsed = pluginManifestSchema.parse({
-    id: "plugin.compat",
-    version: "0.1.0",
-    entry: "renderer://compat",
-    contributes: {
-      tabKinds: ["plugin.view:file.browser"],
-      commands: [],
-      widgets: ["file.browser"]
-    }
-  });
-
-  assert.equal(parsed.manifestVersion, 2);
-  assert.deepEqual(parsed.contributes.widgetKinds, ["plugin.view:file.browser"]);
+test("extension manifest requires v2", () => {
+  assert.throws(
+    () =>
+      extensionManifestSchema.parse({
+        id: "extension.compat",
+        version: "0.1.0",
+        entry: "renderer://compat",
+        contributes: {
+          widgetKinds: ["extension.widget:file.browser"],
+          commands: [],
+          widgets: ["file.browser"]
+        }
+      }),
+    /manifestVersion/
+  );
 });
 
-test("plugin manifest keeps explicit v2 widgetKinds", () => {
-  const parsed = pluginManifestSchema.parse({
+test("extension manifest keeps explicit widgetKinds", () => {
+  const parsed = extensionManifestSchema.parse({
     manifestVersion: 2,
-    id: "plugin.explicit",
+    id: "extension.explicit",
     version: "0.1.0",
     entry: "renderer://explicit",
     contributes: {
-      widgetKinds: ["plugin.view:widget.markdown"],
+      widgetKinds: ["extension.widget:note.markdown"],
       commands: [],
-      widgets: ["widget.markdown"]
+      widgets: ["note.markdown"]
     }
   });
 
   assert.equal(parsed.manifestVersion, 2);
-  assert.deepEqual(parsed.contributes.widgetKinds, ["plugin.view:widget.markdown"]);
+  assert.deepEqual(parsed.contributes.widgetKinds, ["extension.widget:note.markdown"]);
 });

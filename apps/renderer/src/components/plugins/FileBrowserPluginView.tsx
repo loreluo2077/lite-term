@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FsEntry } from "@localterm/shared";
 import { Button } from "@/components/ui/button";
-import type { PluginViewRenderContext } from "../../lib/plugins/types";
+import type { WidgetRenderContext } from "../../lib/plugins/types";
 
 type FileBrowserState = {
   rootPath: string;
@@ -37,7 +37,7 @@ function parentDir(dirPath: string, rootPath: string) {
   return normalized.slice(0, splitAt);
 }
 
-export function FileBrowserPluginView(context: PluginViewRenderContext) {
+export function FileBrowserPluginView(context: WidgetRenderContext) {
   const { state, setState, openWidget } = context;
   const fileState = useMemo(() => normalizeFileBrowserState(state), [state]);
   const [entries, setEntries] = useState<FsEntry[]>([]);

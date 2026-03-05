@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import type { PluginViewRenderContext } from "../../lib/plugins/types";
+import type { WidgetRenderContext } from "../../lib/plugins/types";
 
 type MarkdownState = {
   source: "inline" | "file";
@@ -28,7 +28,7 @@ function fileBaseName(filePath: string | null) {
   return parts[parts.length - 1] ?? filePath;
 }
 
-export function MarkdownPluginView(context: PluginViewRenderContext) {
+export function MarkdownPluginView(context: WidgetRenderContext) {
   const { state, setState, setTitle } = context;
   const markdownState = useMemo(() => normalizeMarkdownState(state), [state]);
   const [displayContent, setDisplayContent] = useState(markdownState.content);

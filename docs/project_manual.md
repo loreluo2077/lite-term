@@ -38,7 +38,7 @@ Lo-Fi Room 聚焦多 agent 并行协作、多 workspace 切换、以及终端与
 - `terminal.local`
 - `file.browser`
 - `note.markdown`
-- `plugin.widget`（兼容 kind；语义上为 external widget）
+- `extension.widget`（external widget）
 
 说明：
 - 运行时只有 widget；extension 包负责发布/安装/权限，并贡献外部 widget。
@@ -50,14 +50,11 @@ Lo-Fi Room 聚焦多 agent 并行协作、多 workspace 切换、以及终端与
 - startup scripts（延时执行）
 - 断连可重连
 
-## 4. 数据与兼容策略
+## 4. 数据协议
 
-workspace snapshot 当前采用迁移兼容方案：
-
-- 新语义字段: `widget.kind/input`
-- 兼容字段: `tabKind/input`（仅读取旧快照）
-
-读路径兼容旧快照，写路径统一升级到 `schemaVersion=3` 纯 widget 结构。
+- workspace snapshot: 仅 `schemaVersion=3`，使用 `widget.kind/input`
+- extension manifest: 仅 `manifestVersion=2`，使用 `widgetKinds`
+- extension widget input: 仅 `extensionId/widgetId/state`
 
 ## 5. 文档入口
 

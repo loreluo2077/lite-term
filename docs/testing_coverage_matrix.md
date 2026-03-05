@@ -44,9 +44,8 @@
 | terminal.local widget 创建 | `tests/integration/workspace-schema.test.ts` | `workspace + local terminal widget...` | 已覆盖 |
 | note.markdown（builtin widget） | `tests/integration/workspace-schema.test.ts` | `panel split + widget creation + pane close flow` | 已覆盖 |
 | file.browser（builtin widget） | `tests/integration/workspace-schema.test.ts` | `panel split + widget creation + pane close flow` | 已覆盖 |
-| external widget（兼容 kind: plugin.widget）协议与归一化 | `tests/integration/workspace-schema.test.ts` | - | 已覆盖（integration） |
-| widget/tabKind 兼容与迁移 | `tests/integration/workspace-schema.test.ts` | - | 已覆盖（integration） |
-| 旧快照加载（无 widget 字段） | 部分：schema 兼容 | - | 部分覆盖 |
+| external widget（kind: extension.widget）协议与归一化 | `tests/integration/workspace-schema.test.ts` | - | 已覆盖（integration） |
+| 旧协议拒绝策略（workspace v2） | `tests/integration/workspace-schema.test.ts` | - | 已覆盖（integration） |
 
 ## 4. Session（terminal.local 专属）
 
@@ -63,11 +62,11 @@
 
 | 功能点 | integration | e2e | 状态 |
 |---|---|---|---|
-| workspace schema v2 合法性 | `tests/integration/workspace-schema.test.ts` | - | 已覆盖 |
+| workspace schema v3 合法性 | `tests/integration/workspace-schema.test.ts` | - | 已覆盖 |
 | split sizes 约束 | `tests/integration/workspace-schema.test.ts` | - | 已覆盖 |
-| plugin rpc error 结构 | `tests/integration/workspace-schema.test.ts` | - | 已覆盖 |
-| plugin input 默认 state | `tests/integration/workspace-schema.test.ts` | - | 已覆盖 |
-| plugin manifest v1(tabKinds) -> v2(widgetKinds) 迁移 | `tests/integration/workspace-schema.test.ts` | - | 已覆盖 |
+| extension rpc error 结构 | `tests/integration/workspace-schema.test.ts` | - | 已覆盖 |
+| extension widget input 结构约束 | `tests/integration/workspace-schema.test.ts` | - | 已覆盖 |
+| extension manifest v2 结构约束 | `tests/integration/workspace-schema.test.ts` | - | 已覆盖 |
 
 ## 6. 人类验收入口
 
@@ -80,4 +79,4 @@
 1. `P1` 分隔条 resize 后重启恢复（panel size persistence）
 2. `P1` 关闭 terminal tab 后 session 真正释放（UI+control-plane 联动）
 3. `P2` 冷启动时 restorePolicy=recreate/manual 的端到端差异路径
-4. `P2` 旧快照（仅 tabKind/input）从真实存档加载回归
+4. `P2` extension.widget 的多扩展并存冲突场景（同 widgetId 不同 extensionId）回归
