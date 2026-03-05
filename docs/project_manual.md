@@ -38,10 +38,10 @@ Lo-Fi Room 聚焦多 agent 并行协作、多 workspace 切换、以及终端与
 - `terminal.local`
 - `file.browser`
 - `note.markdown`
-- `plugin.widget`（外部插件扩展入口）
+- `plugin.widget`（兼容 kind；语义上为 external widget）
 
 说明：
-- plugin 不再作为与 widget 平行的模型，而是“可外部扩展的 widget 来源”。
+- 运行时只有 widget；extension 包负责发布/安装/权限，并贡献外部 widget。
 
 ### 3.4 Session（Terminal Widget 专属）
 

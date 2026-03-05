@@ -29,7 +29,7 @@
 - `apps/desktop`: Electron 主进程、preload、IPC、workspace 存储
 - `apps/renderer`: UI、pane-tree、tab 容器、widget 渲染、会话连接
 - `apps/renderer/src/lib/widgets`: widget runtime state、widget drivers
-- `apps/renderer/src/components/widgets`: widget 组件（local terminal / plugin widget）
+- `apps/renderer/src/components/widgets`: widget 组件（local terminal / extension widget）
 
 ### 3.2 核心包层
 
@@ -72,9 +72,9 @@
 
 - 运行态与渲染逻辑以 `tab.widget.kind/input` 为主
 - 运行态主字段为 `widgetKind`（`tabKind` 仅兼容读取）
-- plugin 统一按 widget 语义处理：
-- 内置 plugin widget：`file.browser` / `note.markdown`
-- 外部 plugin widget：`plugin.widget`（`pluginId + widgetId + state`）
+- extension 只负责分发与权限，运行态统一为 widget：
+- 内置 widget：`file.browser` / `note.markdown`
+- 外部 widget（兼容 kind: `plugin.widget`）：`extensionId + widgetId + state`
 - snapshot 写路径固定写 `schemaVersion=3` + 纯 `widget` 描述
 - snapshot 读路径支持：
 - `v3` 新格式（纯 `widget`）
@@ -82,9 +82,9 @@
 - plugin manifest 读路径支持：
 - `v2` 新格式（`manifestVersion=2` + `widgetKinds`）
 - `v1` 旧格式（`tabKinds`，解析时自动迁移为 `v2`）
-- plugin widget input 读路径支持：
-- 新格式 `widgetId`
-- 旧格式 `viewId`（读取时自动迁移为 `widgetId`）
+- extension widget input 读路径支持：
+- 新格式 `extensionId + widgetId`
+- 旧格式 `pluginId + viewId`（读取时自动迁移）
 
 这样可以保证历史 workspace 快照可继续加载。
 

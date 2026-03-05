@@ -38,7 +38,7 @@ function parentDir(dirPath: string, rootPath: string) {
 }
 
 export function FileBrowserPluginView(context: PluginViewRenderContext) {
-  const { state, setState, openPluginWidget } = context;
+  const { state, setState, openWidget } = context;
   const fileState = useMemo(() => normalizeFileBrowserState(state), [state]);
   const [entries, setEntries] = useState<FsEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -192,7 +192,7 @@ export function FileBrowserPluginView(context: PluginViewRenderContext) {
           disabled={!selectedFile}
           onClick={() => {
             if (!selectedFile) return;
-            openPluginWidget({
+            openWidget({
               widgetId: "note.markdown",
               title: baseName(selectedFile.path),
               state: {

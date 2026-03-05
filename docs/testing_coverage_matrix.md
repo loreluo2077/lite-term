@@ -42,9 +42,9 @@
 | 功能点 | integration | e2e | 状态 |
 |---|---|---|---|
 | terminal.local widget 创建 | `tests/integration/workspace-schema.test.ts` | `workspace + local terminal widget...` | 已覆盖 |
-| note.markdown（builtin plugin widget） | `tests/integration/workspace-schema.test.ts` | `panel split + widget creation + pane close flow` | 已覆盖 |
-| file.browser（builtin plugin widget） | `tests/integration/workspace-schema.test.ts` | `panel split + widget creation + pane close flow` | 已覆盖 |
-| plugin.widget（external）协议与归一化 | `tests/integration/workspace-schema.test.ts` | - | 已覆盖（integration） |
+| note.markdown（builtin widget） | `tests/integration/workspace-schema.test.ts` | `panel split + widget creation + pane close flow` | 已覆盖 |
+| file.browser（builtin widget） | `tests/integration/workspace-schema.test.ts` | `panel split + widget creation + pane close flow` | 已覆盖 |
+| external widget（兼容 kind: plugin.widget）协议与归一化 | `tests/integration/workspace-schema.test.ts` | - | 已覆盖（integration） |
 | widget/tabKind 兼容与迁移 | `tests/integration/workspace-schema.test.ts` | - | 已覆盖（integration） |
 | 旧快照加载（无 widget 字段） | 部分：schema 兼容 | - | 部分覆盖 |
 

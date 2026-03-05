@@ -325,7 +325,7 @@ test("panel split + widget creation + pane close flow", async ({}, testInfo) => 
 
   await runHumanStep(page, testInfo, "create-note-widget", async () => {
     await page.getByRole("button", { name: "+Note" }).first().click();
-    await expect(page.getByText(/plugin builtin\.workspace:(note\.markdown|widget\.markdown)/)).toBeVisible();
+    await expect(page.getByText(/widget builtin\.workspace:(note\.markdown|widget\.markdown)/)).toBeVisible();
   });
 
   await runHumanStep(page, testInfo, "split-horizontal", async () => {
@@ -335,7 +335,7 @@ test("panel split + widget creation + pane close flow", async ({}, testInfo) => 
 
   await runHumanStep(page, testInfo, "create-file-widget", async () => {
     await page.getByRole("button", { name: "+File" }).nth(1).click();
-    await expect(page.getByText(/plugin builtin\.workspace:file\.browser/).first()).toBeVisible();
+    await expect(page.getByText(/widget builtin\.workspace:file\.browser/).first()).toBeVisible();
   });
 
   await runHumanStep(page, testInfo, "close-second-pane", async () => {

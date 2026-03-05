@@ -16,7 +16,9 @@ export const widgetKindSchema = z.enum([
 export const genericWidgetInputSchema = z.record(z.string(), z.unknown());
 
 const pluginWidgetInputRawSchema = z.object({
-  pluginId: z.string().min(1),
+  extensionId: z.string().min(1).optional(),
+  // Legacy compatibility field.
+  pluginId: z.string().min(1).optional(),
   widgetId: z.string().min(1).optional(),
   // Legacy compatibility field.
   viewId: z.string().min(1).optional(),
@@ -25,15 +27,25 @@ const pluginWidgetInputRawSchema = z.object({
 
 export const pluginWidgetInputSchema = pluginWidgetInputRawSchema
   .superRefine((value, ctx) => {
-    if (value.widgetId || value.viewId) return;
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["widgetId"],
-      message: "widgetId is required (or provide legacy viewId)"
-    });
+    if (!value.extensionId && !value.pluginId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["extensionId"],
+        message: "extensionId is required (or provide legacy pluginId)"
+      });
+    }
+    if (!value.widgetId && !value.viewId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["widgetId"],
+        message: "widgetId is required (or provide legacy viewId)"
+      });
+    }
   })
   .transform((value) => ({
-    pluginId: value.pluginId,
+    extensionId: value.extensionId ?? value.pluginId ?? "",
+    // Keep legacy field in normalized output during migration.
+    pluginId: value.extensionId ?? value.pluginId ?? "",
     widgetId: value.widgetId ?? value.viewId ?? "",
     state: value.state
   }));
@@ -99,7 +111,8 @@ export const widgetDescriptorSchema = z.discriminatedUnion("kind", [
 ]);
 
 export type WidgetKind = z.infer<typeof widgetKindSchema>;
-export type PluginWidgetInput = z.infer<typeof pluginWidgetInputSchema>;
+export type ExtensionWidgetInput = z.infer<typeof pluginWidgetInputSchema>;
+export type PluginWidgetInput = ExtensionWidgetInput;
 // Backward-compatible alias.
 export type PluginViewWidgetInput = PluginWidgetInput;
 export type WidgetDescriptor = z.infer<typeof widgetDescriptorSchema>;

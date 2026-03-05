@@ -1,24 +1,26 @@
 import {
-  pluginManifestSchema,
+  extensionManifestSchema,
   pluginWidgetInputSchema,
-  type PluginWidgetInput
+  type ExtensionWidgetInput
 } from "@localterm/shared";
 import { FileBrowserPluginView } from "../../components/plugins/FileBrowserPluginView";
 import { MarkdownPluginView } from "../../components/plugins/MarkdownPluginView";
 import type {
-  PluginWidgetContribution,
-  PluginWidgetTemplate,
-  RendererPlugin
+  WidgetContribution,
+  WidgetTemplate,
+  RendererExtension
 } from "./types";
 
-export const BUILTIN_WORKSPACE_PLUGIN_ID = "builtin.workspace";
+export const BUILTIN_WORKSPACE_EXTENSION_ID = "builtin.workspace";
+// Backward-compatible alias.
+export const BUILTIN_WORKSPACE_PLUGIN_ID = BUILTIN_WORKSPACE_EXTENSION_ID;
 
-const builtinWorkspacePlugin: RendererPlugin = {
-  manifest: pluginManifestSchema.parse({
+const builtinWorkspaceExtension: RendererExtension = {
+  manifest: extensionManifestSchema.parse({
     manifestVersion: 2,
-    id: BUILTIN_WORKSPACE_PLUGIN_ID,
+    id: BUILTIN_WORKSPACE_EXTENSION_ID,
     version: "0.1.0",
-    entry: "renderer://builtin-workspace-plugin",
+    entry: "renderer://builtin-workspace-extension",
     contributes: {
       widgetKinds: ["file.browser", "note.markdown"],
       commands: [],
@@ -28,7 +30,7 @@ const builtinWorkspacePlugin: RendererPlugin = {
   }),
   widgets: [
     {
-      pluginId: BUILTIN_WORKSPACE_PLUGIN_ID,
+      extensionId: BUILTIN_WORKSPACE_EXTENSION_ID,
       widgetId: "file.browser",
       title: "Files",
       defaultState: {
@@ -40,7 +42,7 @@ const builtinWorkspacePlugin: RendererPlugin = {
       render: (context) => <FileBrowserPluginView {...context} />
     },
     {
-      pluginId: BUILTIN_WORKSPACE_PLUGIN_ID,
+      extensionId: BUILTIN_WORKSPACE_EXTENSION_ID,
       widgetId: "note.markdown",
       title: "Markdown",
       defaultState: {
@@ -53,46 +55,55 @@ const builtinWorkspacePlugin: RendererPlugin = {
   ]
 };
 
-const plugins: RendererPlugin[] = [builtinWorkspacePlugin];
+const extensions: RendererExtension[] = [builtinWorkspaceExtension];
 
-function normalizePluginWidgetId(pluginId: string, widgetId: string) {
-  if (pluginId !== BUILTIN_WORKSPACE_PLUGIN_ID) return widgetId;
+function normalizeWidgetId(extensionId: string, widgetId: string) {
+  if (extensionId !== BUILTIN_WORKSPACE_EXTENSION_ID) return widgetId;
   if (widgetId === "widget.markdown") return "note.markdown";
   return widgetId;
 }
 
-const pluginWidgetMap = new Map<string, PluginWidgetContribution>(
-  plugins.flatMap((plugin) =>
-    plugin.widgets.map((widget) => {
-      const normalizedWidgetId = normalizePluginWidgetId(widget.pluginId, widget.widgetId);
-      return [`${widget.pluginId}:${normalizedWidgetId}`, {
+const widgetContributionMap = new Map<string, WidgetContribution>(
+  extensions.flatMap((extension) =>
+    extension.widgets.map((widget) => {
+      const extensionId = widget.extensionId ?? widget.pluginId ?? extension.manifest.id;
+      const normalizedWidgetId = normalizeWidgetId(extensionId, widget.widgetId);
+      return [`${extensionId}:${normalizedWidgetId}`, {
         ...widget,
+        extensionId,
+        pluginId: extensionId,
         widgetId: normalizedWidgetId
       }] as const;
     })
   )
 );
 
-export function listPluginWidgetTemplates(): PluginWidgetTemplate[] {
-  return plugins.flatMap((plugin) =>
-    plugin.widgets.map((widget) => ({
-      pluginId: plugin.manifest.id,
-      widgetId: normalizePluginWidgetId(widget.pluginId, widget.widgetId),
+export function listWidgetTemplates(): WidgetTemplate[] {
+  return extensions.flatMap((extension) =>
+    extension.widgets.map((widget) => {
+      const extensionId = widget.extensionId ?? widget.pluginId ?? extension.manifest.id;
+      return {
+      extensionId,
+      pluginId: extensionId,
+      widgetId: normalizeWidgetId(extensionId, widget.widgetId),
       title: widget.title,
       defaultState: widget.defaultState
-    }))
+      };
+    })
   );
 }
 
-export function getPluginWidgetContribution(pluginId: string, widgetId: string) {
-  const normalizedWidgetId = normalizePluginWidgetId(pluginId, widgetId);
-  return pluginWidgetMap.get(`${pluginId}:${normalizedWidgetId}`) ?? null;
+export function getWidgetContribution(extensionId: string, widgetId: string) {
+  const normalizedWidgetId = normalizeWidgetId(extensionId, widgetId);
+  return widgetContributionMap.get(`${extensionId}:${normalizedWidgetId}`) ?? null;
 }
 
-export function makePluginWidgetInput(template: PluginWidgetTemplate, state?: Record<string, unknown>): PluginWidgetInput {
+export function makeWidgetInput(template: WidgetTemplate, state?: Record<string, unknown>): ExtensionWidgetInput {
+  const extensionId = template.extensionId ?? template.pluginId ?? "";
   return pluginWidgetInputSchema.parse({
-    pluginId: template.pluginId,
-    widgetId: normalizePluginWidgetId(template.pluginId, template.widgetId),
+    extensionId,
+    pluginId: extensionId,
+    widgetId: normalizeWidgetId(extensionId, template.widgetId),
     state: {
       ...template.defaultState,
       ...(state ?? {})
@@ -100,17 +111,29 @@ export function makePluginWidgetInput(template: PluginWidgetTemplate, state?: Re
   });
 }
 
-export function parsePluginWidgetInput(input: unknown): PluginWidgetInput | null {
+export function parseWidgetInput(input: unknown): ExtensionWidgetInput | null {
   const parsed = pluginWidgetInputSchema.safeParse(input);
   if (!parsed.success) return null;
+  const extensionId = parsed.data.extensionId ?? parsed.data.pluginId;
+  if (!extensionId) return null;
   return {
     ...parsed.data,
-    widgetId: normalizePluginWidgetId(parsed.data.pluginId, parsed.data.widgetId)
+    extensionId,
+    pluginId: extensionId,
+    widgetId: normalizeWidgetId(extensionId, parsed.data.widgetId)
   };
 }
 
 // Backward-compatible aliases.
-export const listPluginViewTemplates = listPluginWidgetTemplates;
-export const getPluginViewContribution = getPluginWidgetContribution;
-export const makePluginViewInput = makePluginWidgetInput;
-export const parsePluginViewInput = parsePluginWidgetInput;
+export const listWidgetContributions = listWidgetTemplates;
+export const getWidgetViewContribution = getWidgetContribution;
+export const makeWidgetViewInput = makeWidgetInput;
+export const parseWidgetViewInput = parseWidgetInput;
+export const listPluginWidgetTemplates = listWidgetTemplates;
+export const getPluginWidgetContribution = getWidgetContribution;
+export const makePluginWidgetInput = makeWidgetInput;
+export const parsePluginWidgetInput = parseWidgetInput;
+export const listPluginViewTemplates = listWidgetTemplates;
+export const getPluginViewContribution = getWidgetContribution;
+export const makePluginViewInput = makeWidgetInput;
+export const parsePluginViewInput = parseWidgetInput;

@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
-import type { PluginManifest, PluginWidgetInput } from "@localterm/shared";
+import type { ExtensionManifest, ExtensionWidgetInput } from "@localterm/shared";
 
-export type OpenPluginWidgetRequest = {
+export type OpenWidgetRequest = {
+  extensionId?: string;
+  // Legacy compatibility field.
   pluginId?: string;
   widgetId?: string;
   // Legacy compatibility field.
@@ -11,11 +13,11 @@ export type OpenPluginWidgetRequest = {
   paneId?: string;
 };
 
-export type PluginWidgetRenderContext = {
+export type WidgetRenderContext = {
   tabId: string;
   tabTitle: string;
   isActive: boolean;
-  input: PluginWidgetInput;
+  input: ExtensionWidgetInput;
   state: Record<string, unknown>;
   setState: (
     next:
@@ -23,33 +25,44 @@ export type PluginWidgetRenderContext = {
       | ((prev: Record<string, unknown>) => Record<string, unknown>)
   ) => void;
   setTitle: (nextTitle: string) => void;
-  openPluginWidget: (request: OpenPluginWidgetRequest) => void;
+  openWidget: (request: OpenWidgetRequest) => void;
+  // Alias kept for compatibility.
+  openPluginWidget: (request: OpenWidgetRequest) => void;
   // Legacy compatibility alias.
-  openPluginView: (request: OpenPluginWidgetRequest) => void;
+  openPluginView: (request: OpenWidgetRequest) => void;
 };
 
-export type PluginWidgetContribution = {
-  pluginId: string;
+export type WidgetContribution = {
+  extensionId: string;
+  // Legacy compatibility field.
+  pluginId?: string;
   widgetId: string;
   title: string;
   defaultState: Record<string, unknown>;
-  render: (context: PluginWidgetRenderContext) => ReactNode;
+  render: (context: WidgetRenderContext) => ReactNode;
 };
 
-export type RendererPlugin = {
-  manifest: PluginManifest;
-  widgets: PluginWidgetContribution[];
+export type RendererExtension = {
+  manifest: ExtensionManifest;
+  widgets: WidgetContribution[];
 };
 
-export type PluginWidgetTemplate = {
-  pluginId: string;
+export type WidgetTemplate = {
+  extensionId: string;
+  // Legacy compatibility field.
+  pluginId?: string;
   widgetId: string;
   title: string;
   defaultState: Record<string, unknown>;
 };
 
 // Backward-compatible aliases.
-export type OpenPluginViewRequest = OpenPluginWidgetRequest;
-export type PluginViewRenderContext = PluginWidgetRenderContext;
-export type PluginViewContribution = PluginWidgetContribution;
-export type PluginViewTemplate = PluginWidgetTemplate;
+export type OpenPluginWidgetRequest = OpenWidgetRequest;
+export type OpenPluginViewRequest = OpenWidgetRequest;
+export type PluginWidgetRenderContext = WidgetRenderContext;
+export type PluginViewRenderContext = WidgetRenderContext;
+export type PluginWidgetContribution = WidgetContribution;
+export type PluginViewContribution = WidgetContribution;
+export type PluginWidgetTemplate = WidgetTemplate;
+export type PluginViewTemplate = WidgetTemplate;
+export type RendererPlugin = RendererExtension;

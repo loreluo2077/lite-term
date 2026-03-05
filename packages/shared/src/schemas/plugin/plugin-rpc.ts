@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const pluginPermissionSchema = z.enum([
+export const extensionPermissionSchema = z.enum([
   "workspace.read",
   "workspace.write",
   "session.list",
@@ -12,48 +12,48 @@ export const pluginPermissionSchema = z.enum([
   "shell.exec"
 ]);
 
-const pluginContributesV2Schema = z.object({
+const extensionContributesV2Schema = z.object({
   widgetKinds: z.array(z.string().min(1)).default([]),
   commands: z.array(z.string().min(1)).default([]),
   widgets: z.array(z.string().min(1)).default([])
 });
 
-const pluginContributesV1CompatSchema = z.object({
+const extensionContributesV1CompatSchema = z.object({
   tabKinds: z.array(z.string().min(1)).optional(),
   widgetKinds: z.array(z.string().min(1)).optional(),
   commands: z.array(z.string().min(1)).default([]),
   widgets: z.array(z.string().min(1)).default([])
 });
 
-export const pluginManifestV2Schema = z.object({
+export const extensionManifestV2Schema = z.object({
   manifestVersion: z.literal(2),
   id: z.string().min(1),
   version: z.string().min(1),
   entry: z.string().min(1),
-  contributes: pluginContributesV2Schema.default({
+  contributes: extensionContributesV2Schema.default({
     widgetKinds: [],
     commands: [],
     widgets: []
   }),
-  permissions: z.array(pluginPermissionSchema).default([])
+  permissions: z.array(extensionPermissionSchema).default([])
 });
 
-export const pluginManifestV1CompatSchema = z.object({
+export const extensionManifestV1CompatSchema = z.object({
   manifestVersion: z.literal(1).optional(),
   id: z.string().min(1),
   version: z.string().min(1),
   entry: z.string().min(1),
-  contributes: pluginContributesV1CompatSchema.default({
+  contributes: extensionContributesV1CompatSchema.default({
     tabKinds: [],
     widgetKinds: [],
     commands: [],
     widgets: []
   }),
-  permissions: z.array(pluginPermissionSchema).default([])
+  permissions: z.array(extensionPermissionSchema).default([])
 });
 
-export const pluginManifestAnySchema = z
-  .union([pluginManifestV2Schema, pluginManifestV1CompatSchema])
+export const extensionManifestAnySchema = z
+  .union([extensionManifestV2Schema, extensionManifestV1CompatSchema])
   .transform((value) => {
     if (value.manifestVersion === 2) {
       return value;
@@ -72,32 +72,51 @@ export const pluginManifestAnySchema = z
     };
   });
 
-export const pluginManifestSchema = pluginManifestAnySchema;
-export const pluginManifestLatestSchema = pluginManifestV2Schema;
+export const extensionManifestSchema = extensionManifestAnySchema;
+export const extensionManifestLatestSchema = extensionManifestV2Schema;
 
-export function normalizePluginManifest(input: unknown): PluginManifestV2 {
-  return pluginManifestSchema.parse(input);
+export function normalizeExtensionManifest(input: unknown): ExtensionManifestV2 {
+  return extensionManifestSchema.parse(input);
 }
 
-export const pluginRpcRequestSchema = z.object({
+export const extensionRpcRequestSchema = z
+  .object({
   requestId: z.string().min(1),
-  pluginId: z.string().min(1),
+    extensionId: z.string().min(1).optional(),
+    // Legacy compatibility field.
+    pluginId: z.string().min(1).optional(),
   method: z.string().min(1),
   params: z.unknown().optional()
-});
+  })
+  .superRefine((value, ctx) => {
+    if (value.extensionId || value.pluginId) return;
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["extensionId"],
+      message: "extensionId is required (or provide legacy pluginId)"
+    });
+  })
+  .transform((value) => {
+    const extensionId = value.extensionId ?? value.pluginId ?? "";
+    return {
+      ...value,
+      extensionId,
+      pluginId: extensionId
+    };
+  });
 
-export const pluginRpcErrorSchema = z.object({
+export const extensionRpcErrorSchema = z.object({
   code: z.string().min(1),
   message: z.string().min(1),
-  missingPermission: pluginPermissionSchema.optional()
+  missingPermission: extensionPermissionSchema.optional()
 });
 
-export const pluginRpcResponseSchema = z
+export const extensionRpcResponseSchema = z
   .object({
     requestId: z.string().min(1),
     ok: z.boolean(),
     result: z.unknown().optional(),
-    error: pluginRpcErrorSchema.optional()
+    error: extensionRpcErrorSchema.optional()
   })
   .superRefine((value, ctx) => {
     if (value.ok && value.error) {
@@ -116,10 +135,30 @@ export const pluginRpcResponseSchema = z
     }
   });
 
-export type PluginPermission = z.infer<typeof pluginPermissionSchema>;
-export type PluginManifestV2 = z.infer<typeof pluginManifestV2Schema>;
-export type PluginManifestV1Compat = z.infer<typeof pluginManifestV1CompatSchema>;
-export type PluginManifest = z.infer<typeof pluginManifestSchema>;
-export type PluginRpcRequest = z.infer<typeof pluginRpcRequestSchema>;
-export type PluginRpcError = z.infer<typeof pluginRpcErrorSchema>;
-export type PluginRpcResponse = z.infer<typeof pluginRpcResponseSchema>;
+export type ExtensionPermission = z.infer<typeof extensionPermissionSchema>;
+export type ExtensionManifestV2 = z.infer<typeof extensionManifestV2Schema>;
+export type ExtensionManifestV1Compat = z.infer<typeof extensionManifestV1CompatSchema>;
+export type ExtensionManifest = z.infer<typeof extensionManifestSchema>;
+export type ExtensionRpcRequest = z.infer<typeof extensionRpcRequestSchema>;
+export type ExtensionRpcError = z.infer<typeof extensionRpcErrorSchema>;
+export type ExtensionRpcResponse = z.infer<typeof extensionRpcResponseSchema>;
+
+// Backward-compatible aliases (plugin -> extension terminology migration).
+export const pluginPermissionSchema = extensionPermissionSchema;
+export const pluginManifestV2Schema = extensionManifestV2Schema;
+export const pluginManifestV1CompatSchema = extensionManifestV1CompatSchema;
+export const pluginManifestAnySchema = extensionManifestAnySchema;
+export const pluginManifestSchema = extensionManifestSchema;
+export const pluginManifestLatestSchema = extensionManifestLatestSchema;
+export const pluginRpcRequestSchema = extensionRpcRequestSchema;
+export const pluginRpcErrorSchema = extensionRpcErrorSchema;
+export const pluginRpcResponseSchema = extensionRpcResponseSchema;
+export const normalizePluginManifest = normalizeExtensionManifest;
+
+export type PluginPermission = ExtensionPermission;
+export type PluginManifestV2 = ExtensionManifestV2;
+export type PluginManifestV1Compat = ExtensionManifestV1Compat;
+export type PluginManifest = ExtensionManifest;
+export type PluginRpcRequest = ExtensionRpcRequest;
+export type PluginRpcError = ExtensionRpcError;
+export type PluginRpcResponse = ExtensionRpcResponse;

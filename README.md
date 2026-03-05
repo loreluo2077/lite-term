@@ -28,7 +28,7 @@ Lo-Fi Room 是一个 Electron + React 的本地应用，核心目标是把多终
 ## 代码结构（命名收敛）
 
 - `apps/renderer/src/lib/widgets/state.ts`: widget 运行态（tab 容器 + widget 内容 + terminal session 归属）
-- `apps/renderer/src/lib/widgets/drivers/*`: widget driver（local terminal / plugin widget / noop）
+- `apps/renderer/src/lib/widgets/drivers/*`: widget driver（local terminal / extension widget / noop）
 - `apps/renderer/src/components/widgets/*`: widget 视图组件
 - 兼容层仍保留：
 - `apps/renderer/src/lib/atoms/session.ts`
@@ -38,7 +38,7 @@ Lo-Fi Room 是一个 Electron + React 的本地应用，核心目标是把多终
 
 说明：
 - 运行态主字段已切换为 `widgetKind`，`tabKind` 仅作为兼容读取保留。
-- plugin 语义已收敛为 widget：内置能力是 builtin widget，扩展能力是 plugin widget（外部可插拔）。
+- 运行时只有 widget：内置能力是 builtin widget，外部扩展通过 extension 包贡献 widget。
 
 ## Packages 分层（base / widget / plugin）
 
@@ -56,7 +56,7 @@ Lo-Fi Room 是一个 Electron + React 的本地应用，核心目标是把多终
 协议迁移：
 - workspace snapshot: `v2(tabKind/input)` 读兼容，写统一 `v3(widget)`
 - plugin manifest: `v1(tabKinds)` 读兼容，解析后统一升级为 `v2(widgetKinds)`
-- plugin widget input: 读兼容 `viewId`，内部统一 `widgetId`
+- extension widget input: 读兼容 `pluginId/viewId`，内部统一 `extensionId/widgetId`
 
 说明：
 - `packages/session-core` / `packages/session-local` / `packages/session-worker` 现为兼容 shim

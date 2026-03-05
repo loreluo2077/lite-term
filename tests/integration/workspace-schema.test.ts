@@ -277,6 +277,7 @@ test("normalizeWorkspaceSnapshot upgrades v3 legacy plugin.view to widget semant
   if (!normalized.tabs[0]) return;
   assert.equal(normalized.tabs[0].widget.kind, "note.markdown");
   assert.deepEqual(normalized.tabs[0].widget.input, {
+    extensionId: "builtin.workspace",
     pluginId: "builtin.workspace",
     widgetId: "note.markdown",
     state: {}

@@ -24,10 +24,10 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getWidgetDriver, type LocalTerminalWidgetInput } from "../lib/widgets/drivers";
 import type {
+  ExtensionWidgetInput,
   LocalSessionStartupScript,
   PaneDirection,
   PaneNode,
-  PluginWidgetInput,
   WidgetTabDescriptor,
   WidgetKind,
   WorkspaceListResponse,
@@ -51,10 +51,10 @@ import {
   listLeafPaneIds
 } from "../lib/workspace/pane-tree";
 import {
-  listPluginWidgetTemplates,
-  parsePluginWidgetInput,
-  makePluginWidgetInput,
-  type OpenPluginWidgetRequest
+  listWidgetTemplates,
+  parseWidgetInput,
+  makeWidgetInput,
+  type OpenWidgetRequest
 } from "../lib/plugins";
 import {
   Panel,
@@ -314,8 +314,9 @@ function parseStartupScriptDraftsFromInput(input: Record<string, unknown>): Star
   return parsed;
 }
 
-function defaultNoteWidgetInput(): PluginWidgetInput {
+function defaultNoteWidgetInput(): ExtensionWidgetInput {
   return {
+    extensionId: "builtin.workspace",
     pluginId: "builtin.workspace",
     widgetId: "note.markdown",
     state: {
@@ -326,12 +327,12 @@ function defaultNoteWidgetInput(): PluginWidgetInput {
   };
 }
 
-function normalizePluginWidgetInput(input: unknown): PluginWidgetInput {
-  return parsePluginWidgetInput(input) ?? defaultNoteWidgetInput();
+function normalizePluginWidgetInput(input: unknown): ExtensionWidgetInput {
+  return parseWidgetInput(input) ?? defaultNoteWidgetInput();
 }
 
-function resolvePluginWidgetKind(input: PluginWidgetInput): WidgetKind {
-  if (input.pluginId !== "builtin.workspace") return "plugin.widget";
+function resolvePluginWidgetKind(input: ExtensionWidgetInput): WidgetKind {
+  if (input.extensionId !== "builtin.workspace") return "plugin.widget";
   if (input.widgetId === "file.browser") return "file.browser";
   if (input.widgetId === "widget.markdown") return "note.markdown";
   if (input.widgetId === "note.markdown") return "note.markdown";
@@ -509,7 +510,7 @@ export function App() {
       quietTimer: ReturnType<typeof setTimeout> | null;
     }
   >>(new Map());
-  const pluginTemplates = useMemo(() => listPluginWidgetTemplates(), []);
+  const widgetTemplates = useMemo(() => listWidgetTemplates(), []);
   const leafPaneIds = useMemo(() => listLeafPaneIds(workspace.root), [workspace.root]);
   const workspaceById = useMemo(
     () => new Map(workspaceList.workspaces.map((entry) => [entry.id, entry])),
@@ -780,22 +781,22 @@ export function App() {
     terminalStartupScriptsTargetTabId
   ]);
 
-  const createPluginViewTab = useCallback(async (request: OpenPluginWidgetRequest) => {
+  const openWidgetTab = useCallback(async (request: OpenWidgetRequest) => {
     const requestWidgetId = request.widgetId ?? request.viewId;
     if (!requestWidgetId) {
-      console.error("plugin widget id missing", request);
+      console.error("widget id missing", request);
       return "";
     }
-    const template = pluginTemplates.find(
+    const template = widgetTemplates.find(
       (entry) =>
         entry.widgetId === requestWidgetId &&
-        (request.pluginId ? entry.pluginId === request.pluginId : true)
+        (request.extensionId ? entry.extensionId === request.extensionId : request.pluginId ? entry.extensionId === request.pluginId : true)
     );
     if (!template) {
-      console.error("plugin template not found", request);
+      console.error("widget template not found", request);
       return "";
     }
-    const input = makePluginWidgetInput(template, request.state);
+    const input = makeWidgetInput(template, request.state);
     const payload: {
       widgetKind: WidgetKind;
       title: string;
@@ -812,7 +813,7 @@ export function App() {
       payload.paneId = request.paneId;
     }
     return await createWidgetTabWithDriver(payload);
-  }, [createWidgetTabWithDriver, pluginTemplates]);
+  }, [createWidgetTabWithDriver, widgetTemplates]);
 
   const clearStartupScriptTimersForSession = useCallback((sessionKey: string) => {
     const timers = startupScriptTimersRef.current.get(sessionKey);
@@ -1874,7 +1875,7 @@ export function App() {
               variant="ghost"
               className="h-6 px-2 text-[10px]"
               onClick={() => {
-                void createPluginViewTab({
+                void openWidgetTab({
                   widgetId: "file.browser",
                   paneId: node.id
                 });
@@ -1887,7 +1888,7 @@ export function App() {
               variant="ghost"
               className="h-6 px-2 text-[10px]"
               onClick={() => {
-                void createPluginViewTab({
+                void openWidgetTab({
                   widgetId: "note.markdown",
                   paneId: node.id
                 });
@@ -2049,8 +2050,8 @@ export function App() {
                       isActive={tab.id === activeTabId}
                       onUpdateInput={updateTabInput}
                       onUpdateTitle={updateTabTitle}
-                      onOpenPluginWidget={(request) => {
-                        void createPluginViewTab({
+                      onOpenWidget={(request) => {
+                        void openWidgetTab({
                           ...request,
                           paneId: request.paneId ?? node.id
                         });
@@ -2088,7 +2089,7 @@ export function App() {
     closePane,
     closeTab,
     openTerminalCreateDialog,
-    createPluginViewTab,
+    openWidgetTab,
     dropPreview,
     handleTerminalSessionReady,
     leafPaneIds.length,
@@ -2289,8 +2290,8 @@ export function App() {
                     isActive={false}
                     onUpdateInput={updateTabInput}
                     onUpdateTitle={updateTabTitle}
-                    onOpenPluginWidget={(request) => {
-                      void createPluginViewTab({
+                    onOpenWidget={(request) => {
+                      void openWidgetTab({
                         ...request,
                         paneId: workspace.activePaneId
                       });

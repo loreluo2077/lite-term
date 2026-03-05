@@ -138,6 +138,7 @@ test("workspace storage: save/load/list/delete/default", async () => {
     assert.equal(loadedPlugin.layout.schemaVersion, 3);
     assert.equal(loadedPlugin.tabs[0]?.widget.kind, "note.markdown");
     assert.deepEqual(loadedPlugin.tabs[0]?.widget.input, {
+      extensionId: "builtin.workspace",
       pluginId: "builtin.workspace",
       widgetId: "note.markdown",
       state: {

@@ -12,6 +12,7 @@ import {
   webBrowserWidgetSchema,
   widgetKindSchema,
   widgetReactWidgetSchema,
+  type ExtensionWidgetInput,
   type PluginWidgetInput,
   type WidgetDescriptor as SharedWidgetDescriptor,
   type WidgetKind
@@ -128,18 +129,18 @@ export const tabDescriptorSchema = z.union([
   legacyTabDescriptorSchema
 ]);
 
-const BUILTIN_WORKSPACE_PLUGIN_ID = "builtin.workspace";
+const BUILTIN_WORKSPACE_EXTENSION_ID = "builtin.workspace";
 
-function mapPluginWidgetInputToWidgetKind(input: PluginWidgetInput): WidgetKind {
-  if (input.pluginId !== BUILTIN_WORKSPACE_PLUGIN_ID) return "plugin.widget";
+function mapPluginWidgetInputToWidgetKind(input: ExtensionWidgetInput): WidgetKind {
+  if (input.extensionId !== BUILTIN_WORKSPACE_EXTENSION_ID) return "plugin.widget";
   if (input.widgetId === "file.browser") return "file.browser";
   if (input.widgetId === "widget.markdown") return "note.markdown";
   if (input.widgetId === "note.markdown") return "note.markdown";
   return "plugin.widget";
 }
 
-function normalizePluginWidgetInput(input: PluginWidgetInput): PluginWidgetInput {
-  if (input.pluginId !== BUILTIN_WORKSPACE_PLUGIN_ID) return input;
+function normalizePluginWidgetInput(input: ExtensionWidgetInput): ExtensionWidgetInput {
+  if (input.extensionId !== BUILTIN_WORKSPACE_EXTENSION_ID) return input;
   if (input.widgetId === "widget.markdown") {
     return {
       ...input,
@@ -149,7 +150,7 @@ function normalizePluginWidgetInput(input: PluginWidgetInput): PluginWidgetInput
   return input;
 }
 
-function normalizePluginWidgetDescriptor(input: PluginWidgetInput): SharedWidgetDescriptor {
+function normalizePluginWidgetDescriptor(input: ExtensionWidgetInput): SharedWidgetDescriptor {
   const normalizedInput = normalizePluginWidgetInput(input);
   const mappedKind = mapPluginWidgetInputToWidgetKind(normalizedInput);
   return {
