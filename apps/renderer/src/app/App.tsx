@@ -116,8 +116,8 @@ const BULK_STRESS_DEFAULTS = {
   payloadSize: 140
 } as const;
 
-function nextTabTitle(count: number) {
-  return `Local ${count}`;
+function nextTerminalTabTitle(count: number) {
+  return `Terminal ${count}`;
 }
 
 function formatBytes(bytes: number) {
@@ -759,7 +759,7 @@ export function App() {
     return tabId;
   }, [addTabToPane, resolvedActivePaneId, setActiveTabId, setTabs]);
 
-  const createLocalTerminalTab = useCallback(async (activate = true, paneId = resolvedActivePaneId) => {
+  const createExtensionTerminalTab = useCallback(async (activate = true, paneId = resolvedActivePaneId) => {
     tabCounterRef.current += 1;
     const template = widgetTemplates.find(
       (entry) => entry.extensionId === "builtin.workspace" && entry.widgetId === "terminal.local"
@@ -775,14 +775,14 @@ export function App() {
     });
     return await createWidgetTabWithDriver({
       widgetKind: resolveExtensionWidgetKind(input),
-      title: nextTabTitle(tabCounterRef.current),
+      title: nextTerminalTabTitle(tabCounterRef.current),
       input: input as Record<string, unknown>,
       activate,
       paneId
     });
   }, [createWidgetTabWithDriver, resolvedActivePaneId, widgetTemplates]);
 
-  const createLocalTerminalTabWithScripts = useCallback(async (
+  const createExtensionTerminalTabWithStartupScripts = useCallback(async (
     payload: {
       paneId: string;
       activate: boolean;
@@ -806,7 +806,7 @@ export function App() {
 
     return await createWidgetTabWithDriver({
       widgetKind: resolveExtensionWidgetKind(input),
-      title: nextTabTitle(tabCounterRef.current),
+      title: nextTerminalTabTitle(tabCounterRef.current),
       input: input as Record<string, unknown>,
       activate: payload.activate,
       paneId: payload.paneId
@@ -846,7 +846,7 @@ export function App() {
     if (pendingTerminalCreation) {
       const { paneId, activate } = pendingTerminalCreation;
       closeTerminalStartupScriptsDialog();
-      void createLocalTerminalTabWithScripts({
+      void createExtensionTerminalTabWithStartupScripts({
         paneId,
         activate,
         startupScripts
@@ -854,7 +854,7 @@ export function App() {
     }
   }, [
     closeTerminalStartupScriptsDialog,
-    createLocalTerminalTabWithScripts,
+    createExtensionTerminalTabWithStartupScripts,
     pendingTerminalCreation,
     setTabs,
     terminalStartupScriptDrafts,
@@ -1466,7 +1466,7 @@ export function App() {
       const createdTabIds: string[] = [];
       // Use the same stable path as manual creation: activate each new tab during bootstrap.
       for (let i = 0; i < BULK_STRESS_DEFAULTS.sessions; i++) {
-        const tabId = await createLocalTerminalTab(true);
+        const tabId = await createExtensionTerminalTab(true);
         createdTabIds.push(tabId);
         // Give renderer/ws a short settle time before creating the next one.
         await sleep(120);
@@ -1540,7 +1540,7 @@ export function App() {
     } finally {
       setBulkStressRunning(false);
     }
-  }, [bulkStressRunning, createLocalTerminalTab, perfRunning, setActiveTabId]);
+  }, [bulkStressRunning, createExtensionTerminalTab, perfRunning, setActiveTabId]);
 
   const tabsById = useMemo(() => {
     return new Map(tabs.map((tab) => [tab.id, tab]));
@@ -1718,6 +1718,19 @@ export function App() {
               }}
             >
               +Note
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 px-2 text-[10px]"
+              onClick={() => {
+                void openWidgetTab({
+                  widgetId: "todo.react",
+                  paneId: node.id
+                });
+              }}
+            >
+              +Todo
             </Button>
             <Button
               size="sm"
@@ -2324,7 +2337,7 @@ export function App() {
                   const creation = pendingTerminalCreation;
                   if (!creation) return;
                   closeTerminalStartupScriptsDialog();
-                  void createLocalTerminalTabWithScripts({
+                  void createExtensionTerminalTabWithStartupScripts({
                     paneId: creation.paneId,
                     activate: creation.activate,
                     startupScripts: []

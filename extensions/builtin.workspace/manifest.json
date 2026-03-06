@@ -7,13 +7,15 @@
     "widgetKinds": [
       "terminal.local",
       "file.browser",
-      "note.markdown"
+      "note.markdown",
+      "todo.react"
     ],
     "commands": [],
     "widgets": [
       "terminal.local",
       "file.browser",
-      "note.markdown"
+      "note.markdown",
+      "todo.react"
     ]
   },
   "permissions": [

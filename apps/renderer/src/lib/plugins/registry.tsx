@@ -14,9 +14,9 @@ const builtinWorkspaceManifest = extensionManifestSchema.parse({
   version: "0.1.0",
   entry: "localterm-extension://builtin.workspace/manifest.json",
   contributes: {
-    widgetKinds: ["terminal.local", "file.browser", "note.markdown"],
+    widgetKinds: ["terminal.local", "file.browser", "note.markdown", "todo.react"],
     commands: [],
-    widgets: ["terminal.local", "file.browser", "note.markdown"]
+    widgets: ["terminal.local", "file.browser", "note.markdown", "todo.react"]
   },
   permissions: [
     "workspace.read",
@@ -68,6 +68,17 @@ const builtinTemplates: WidgetTemplate[] = [
       source: "inline",
       content: "# Notes\n\n",
       mode: "edit"
+    },
+    permissions: builtinWorkspacePermissions
+  },
+  {
+    extensionId: BUILTIN_WORKSPACE_EXTENSION_ID,
+    widgetId: "todo.react",
+    title: "Todo",
+    defaultState: {
+      todos: [],
+      filter: "all",
+      draft: ""
     },
     permissions: builtinWorkspacePermissions
   }

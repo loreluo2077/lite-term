@@ -1,9 +1,15 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { app, protocol } from "electron";
 
 const EXTENSION_SCHEME = "localterm-extension";
 const EXTENSION_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i;
+const SOURCE_EXTENSIONS_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../../extensions"
+);
+const extensionRootCache = new Map<string, string>();
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -36,7 +42,10 @@ function guessContentType(filePath: string) {
 
 function ensureSafePath(rootDir: string, requestedPath: string) {
   const normalized = requestedPath.replace(/^\/+/, "");
-  const resolved = path.resolve(rootDir, normalized || "index.html");
+  const requested = normalized.length === 0 || normalized.endsWith("/")
+    ? `${normalized}index.html`
+    : normalized;
+  const resolved = path.resolve(rootDir, requested);
   const safePrefix = `${rootDir}${path.sep}`;
   if (resolved !== rootDir && !resolved.startsWith(safePrefix)) {
     return null;
@@ -44,23 +53,72 @@ function ensureSafePath(rootDir: string, requestedPath: string) {
   return resolved;
 }
 
+function collectAncestorExtensionRoots(startDir: string, extensionId: string) {
+  const roots: string[] = [];
+  let current = path.resolve(startDir);
+  const visited = new Set<string>();
+  while (!visited.has(current)) {
+    visited.add(current);
+    roots.push(path.resolve(current, "extensions", extensionId));
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return roots;
+}
+
 async function resolveExtensionFilePath(extensionId: string, requestPath: string) {
-  const repoCandidate = path.resolve(process.cwd(), "extensions", extensionId);
-  const userDataCandidate = path.resolve(app.getPath("userData"), "extensions", extensionId);
-  const roots = [repoCandidate, userDataCandidate];
+  const cachedRoot = extensionRootCache.get(extensionId);
+  if (cachedRoot) {
+    const target = ensureSafePath(cachedRoot, requestPath);
+    if (target) {
+      try {
+        const stat = await fs.stat(target);
+        if (stat.isFile()) {
+          return target;
+        }
+      } catch {
+        // cache miss; continue resolving and refresh cache
+      }
+    }
+  }
+
+  const envRoot = process.env.LOCALTERM_EXTENSION_ROOT?.trim();
+  const candidates = [
+    ...(envRoot ? [path.resolve(envRoot, extensionId)] : []),
+    path.resolve(process.cwd(), "extensions", extensionId),
+    path.resolve(app.getAppPath(), "extensions", extensionId),
+    path.resolve(path.dirname(app.getAppPath()), "extensions", extensionId),
+    path.resolve(SOURCE_EXTENSIONS_ROOT, extensionId),
+    ...collectAncestorExtensionRoots(process.cwd(), extensionId),
+    ...collectAncestorExtensionRoots(app.getAppPath(), extensionId),
+    path.resolve(app.getPath("userData"), "extensions", extensionId)
+  ];
+  const roots = [...new Set(candidates)];
 
   for (const root of roots) {
     const target = ensureSafePath(root, requestPath);
     if (!target) continue;
     try {
       const stat = await fs.stat(target);
-      if (!stat.isFile()) continue;
-      return target;
+      if (stat.isFile()) {
+        extensionRootCache.set(extensionId, root);
+        return target;
+      }
+      if (stat.isDirectory()) {
+        const indexTarget = path.resolve(target, "index.html");
+        const indexStat = await fs.stat(indexTarget);
+        if (indexStat.isFile()) {
+          extensionRootCache.set(extensionId, root);
+          return indexTarget;
+        }
+      }
     } catch {
       // continue lookup
     }
   }
 
+  console.warn(`[extension-protocol] not found: ${extensionId}${requestPath} roots=${roots.join(", ")}`);
   return null;
 }
 

@@ -35,6 +35,7 @@
     "verify:quick": "pnpm typecheck && pnpm test:integration",
     "acceptance:auto": "pnpm verify:quick && pnpm --filter @localterm/renderer build && pnpm debug:sessions",
     "verify:ci": "pnpm verify:quick && pnpm test:e2e",
+    "build:widget:todo": "pnpm --filter @localterm/widget-todo-react build",
     "debug:sessions": "tsx scripts/debug-sessions.ts",
     "kill:orphans": "tsx scripts/kill-orphans.ts",
     "perf:stress": "tsx scripts/perf-session-stress.ts"
