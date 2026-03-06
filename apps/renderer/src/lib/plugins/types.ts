@@ -1,5 +1,4 @@
-import type { ReactNode } from "react";
-import type { ExtensionManifest, ExtensionWidgetInput } from "@localterm/shared";
+import type { ExtensionPermission, ExtensionWidgetInput } from "@localterm/shared";
 
 export type OpenWidgetRequest = {
   extensionId?: string;
@@ -9,37 +8,43 @@ export type OpenWidgetRequest = {
   paneId?: string;
 };
 
-export type WidgetRenderContext = {
-  tabId: string;
-  tabTitle: string;
-  isActive: boolean;
-  input: ExtensionWidgetInput;
-  state: Record<string, unknown>;
-  setState: (
-    next:
-      | Record<string, unknown>
-      | ((prev: Record<string, unknown>) => Record<string, unknown>)
-  ) => void;
-  setTitle: (nextTitle: string) => void;
-  openWidget: (request: OpenWidgetRequest) => void;
-};
-
-export type WidgetContribution = {
-  extensionId: string;
-  widgetId: string;
-  title: string;
-  defaultState: Record<string, unknown>;
-  render: (context: WidgetRenderContext) => ReactNode;
-};
-
-export type RendererExtension = {
-  manifest: ExtensionManifest;
-  widgets: WidgetContribution[];
-};
-
 export type WidgetTemplate = {
   extensionId: string;
   widgetId: string;
   title: string;
   defaultState: Record<string, unknown>;
+  permissions: ExtensionPermission[];
+};
+
+export type WidgetTemplateMap = Map<string, WidgetTemplate>;
+
+export type WidgetApiRequest = {
+  requestId: string;
+  method: string;
+  params?: Record<string, unknown>;
+};
+
+export type WidgetApiResponse = {
+  requestId: string;
+  ok: boolean;
+  result?: unknown;
+  error?: {
+    code: string;
+    message: string;
+  };
+};
+
+export type WidgetTabSummary = {
+  tabId: string;
+  title: string;
+  kind: string;
+};
+
+export type WidgetContextPayload = {
+  tabId: string;
+  tabTitle: string;
+  isActive: boolean;
+  input: ExtensionWidgetInput;
+  workspaceId: string;
+  workspaceName: string;
 };

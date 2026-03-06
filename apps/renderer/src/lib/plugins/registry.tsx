@@ -1,59 +1,77 @@
 import {
   extensionManifestSchema,
   extensionWidgetInputSchema,
-  type ExtensionWidgetInput
+  type ExtensionWidgetInput,
+  type ExtensionPermission
 } from "@localterm/shared";
-import { FileBrowserPluginView } from "../../components/plugins/FileBrowserPluginView";
-import { MarkdownPluginView } from "../../components/plugins/MarkdownPluginView";
-import type {
-  WidgetContribution,
-  WidgetTemplate,
-  RendererExtension
-} from "./types";
+import type { WidgetTemplate, WidgetTemplateMap } from "./types";
 
 export const BUILTIN_WORKSPACE_EXTENSION_ID = "builtin.workspace";
 
-const builtinWorkspaceExtension: RendererExtension = {
-  manifest: extensionManifestSchema.parse({
-    manifestVersion: 2,
-    id: BUILTIN_WORKSPACE_EXTENSION_ID,
-    version: "0.1.0",
-    entry: "renderer://builtin-workspace-extension",
-    contributes: {
-      widgetKinds: ["file.browser", "note.markdown"],
-      commands: [],
-      widgets: ["file.browser", "note.markdown"]
-    },
-    permissions: ["workspace.read", "workspace.write", "fs.read"]
-  }),
-  widgets: [
-    {
-      extensionId: BUILTIN_WORKSPACE_EXTENSION_ID,
-      widgetId: "file.browser",
-      title: "Files",
-      defaultState: {
-        rootPath: "",
-        currentPath: "",
-        selectedPath: null,
-        showHidden: false
-      },
-      render: (context) => <FileBrowserPluginView {...context} />
-    },
-    {
-      extensionId: BUILTIN_WORKSPACE_EXTENSION_ID,
-      widgetId: "note.markdown",
-      title: "Markdown",
-      defaultState: {
-        source: "inline",
-        content: "# Notes\n\n",
-        mode: "edit"
-      },
-      render: (context) => <MarkdownPluginView {...context} />
-    }
+const builtinWorkspaceManifest = extensionManifestSchema.parse({
+  manifestVersion: 2,
+  id: BUILTIN_WORKSPACE_EXTENSION_ID,
+  version: "0.1.0",
+  entry: "localterm-extension://builtin.workspace/manifest.json",
+  contributes: {
+    widgetKinds: ["terminal.local", "file.browser", "note.markdown"],
+    commands: [],
+    widgets: ["terminal.local", "file.browser", "note.markdown"]
+  },
+  permissions: [
+    "workspace.read",
+    "workspace.write",
+    "fs.read",
+    "session.list",
+    "session.create",
+    "session.kill"
   ]
-};
+});
 
-const extensions: RendererExtension[] = [builtinWorkspaceExtension];
+const builtinWorkspacePermissions =
+  builtinWorkspaceManifest.permissions as ExtensionPermission[];
+
+const builtinTemplates: WidgetTemplate[] = [
+  {
+    extensionId: BUILTIN_WORKSPACE_EXTENSION_ID,
+    widgetId: "terminal.local",
+    title: "Terminal",
+    defaultState: {
+      cols: 120,
+      rows: 30,
+      sessionId: "",
+      port: 0,
+      pid: 0,
+      status: "idle",
+      wsConnected: false,
+      startupScripts: []
+    },
+    permissions: builtinWorkspacePermissions
+  },
+  {
+    extensionId: BUILTIN_WORKSPACE_EXTENSION_ID,
+    widgetId: "file.browser",
+    title: "Files",
+    defaultState: {
+      rootPath: "",
+      currentPath: "",
+      selectedPath: null,
+      showHidden: false
+    },
+    permissions: builtinWorkspacePermissions
+  },
+  {
+    extensionId: BUILTIN_WORKSPACE_EXTENSION_ID,
+    widgetId: "note.markdown",
+    title: "Markdown",
+    defaultState: {
+      source: "inline",
+      content: "# Notes\n\n",
+      mode: "edit"
+    },
+    permissions: builtinWorkspacePermissions
+  }
+];
 
 function normalizeWidgetId(extensionId: string, widgetId: string) {
   if (extensionId !== BUILTIN_WORKSPACE_EXTENSION_ID) return widgetId;
@@ -61,44 +79,32 @@ function normalizeWidgetId(extensionId: string, widgetId: string) {
   return widgetId;
 }
 
-const widgetContributionMap = new Map<string, WidgetContribution>(
-  extensions.flatMap((extension) =>
-    extension.widgets.map((widget) => {
-      const extensionId = widget.extensionId || extension.manifest.id;
-      const normalizedWidgetId = normalizeWidgetId(extensionId, widget.widgetId);
-      return [`${extensionId}:${normalizedWidgetId}`, {
-        ...widget,
-        extensionId,
-        widgetId: normalizedWidgetId
-      }] as const;
-    })
-  )
+const widgetTemplateMap: WidgetTemplateMap = new Map(
+  builtinTemplates.map((template) => [
+    `${template.extensionId}:${normalizeWidgetId(template.extensionId, template.widgetId)}`,
+    {
+      ...template,
+      widgetId: normalizeWidgetId(template.extensionId, template.widgetId)
+    }
+  ])
 );
 
 export function listWidgetTemplates(): WidgetTemplate[] {
-  return extensions.flatMap((extension) =>
-    extension.widgets.map((widget) => {
-      const extensionId = widget.extensionId || extension.manifest.id;
-      return {
-        extensionId,
-        widgetId: normalizeWidgetId(extensionId, widget.widgetId),
-        title: widget.title,
-        defaultState: widget.defaultState
-      };
-    })
-  );
+  return [...widgetTemplateMap.values()];
 }
 
-export function getWidgetContribution(extensionId: string, widgetId: string) {
+export function getWidgetTemplate(extensionId: string, widgetId: string): WidgetTemplate | null {
   const normalizedWidgetId = normalizeWidgetId(extensionId, widgetId);
-  return widgetContributionMap.get(`${extensionId}:${normalizedWidgetId}`) ?? null;
+  return widgetTemplateMap.get(`${extensionId}:${normalizedWidgetId}`) ?? null;
 }
 
-export function makeWidgetInput(template: WidgetTemplate, state?: Record<string, unknown>): ExtensionWidgetInput {
-  const extensionId = template.extensionId;
+export function makeWidgetInput(
+  template: WidgetTemplate,
+  state?: Record<string, unknown>
+): ExtensionWidgetInput {
   return extensionWidgetInputSchema.parse({
-    extensionId,
-    widgetId: normalizeWidgetId(extensionId, template.widgetId),
+    extensionId: template.extensionId,
+    widgetId: normalizeWidgetId(template.extensionId, template.widgetId),
     state: {
       ...template.defaultState,
       ...(state ?? {})
@@ -111,7 +117,11 @@ export function parseWidgetInput(input: unknown): ExtensionWidgetInput | null {
   if (!parsed.success) return null;
   return {
     ...parsed.data,
-    extensionId: parsed.data.extensionId,
     widgetId: normalizeWidgetId(parsed.data.extensionId, parsed.data.widgetId)
   };
+}
+
+export function buildWebviewWidgetUrl(input: ExtensionWidgetInput) {
+  const widgetPath = encodeURIComponent(input.widgetId);
+  return `localterm-extension://${encodeURIComponent(input.extensionId)}/widgets/${widgetPath}/index.html`;
 }

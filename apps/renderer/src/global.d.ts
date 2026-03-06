@@ -1,6 +1,8 @@
+import type * as React from "react";
 import type {
   CreateLocalSessionRequest,
   CreateLocalSessionResponse,
+  ExtensionHostConfig,
   KillSessionRequest,
   ListSessionsResponse,
   OkResponse,
@@ -20,6 +22,18 @@ import type {
 } from "@localterm/shared";
 
 declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      webview: React.DetailedHTMLProps<
+        React.HTMLAttributes<HTMLElement>,
+        HTMLElement
+      > & {
+        src?: string;
+        preload?: string;
+      };
+    }
+  }
+
   interface Window {
     localtermApi: {
       session: {
@@ -44,6 +58,9 @@ declare global {
         pickFile(payload?: FsPickFileRequest): Promise<FsPickFileResponse>;
         readDir(payload: FsReadDirRequest): Promise<FsReadDirResponse>;
         readFile(payload: FsReadFileRequest): Promise<FsReadFileResponse>;
+      };
+      extension: {
+        getHostConfig(): Promise<ExtensionHostConfig>;
       };
     };
   }

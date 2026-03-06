@@ -7,13 +7,61 @@ import {
   workspaceListResponseSchema,
   workspaceSnapshotSchema,
   type WorkspaceGetDefaultResponse,
-  type WorkspaceListResponse,
-  type WorkspaceSnapshot
+  type WorkspaceListResponse
 } from "@localterm/shared";
 
 const STORE_ROOT_DIR = "workspace-store";
 const SNAPSHOT_DIR = "workspaces";
 const INDEX_FILE = "index.json";
+const BUILTIN_WORKSPACE_EXTENSION_ID = "builtin.workspace";
+
+function toRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object") return null;
+  return value as Record<string, unknown>;
+}
+
+function migrateLegacyTerminalTabDescriptor(descriptor: unknown): unknown {
+  const descriptorRecord = toRecord(descriptor);
+  if (!descriptorRecord) return descriptor;
+  const widget = toRecord(descriptorRecord.widget);
+  if (!widget || widget.kind !== "terminal.local") return descriptor;
+  const input = toRecord(widget.input) ?? {};
+  const cols = typeof input.cols === "number" && Number.isFinite(input.cols) ? Math.floor(input.cols) : 120;
+  const rows = typeof input.rows === "number" && Number.isFinite(input.rows) ? Math.floor(input.rows) : 30;
+  const startupScripts = Array.isArray(input.startupScripts) ? input.startupScripts : [];
+
+  return {
+    ...descriptorRecord,
+    restorePolicy: "manual",
+    widget: {
+      kind: "extension.widget",
+      input: {
+        extensionId: BUILTIN_WORKSPACE_EXTENSION_ID,
+        widgetId: "terminal.local",
+        state: {
+          cols,
+          rows,
+          startupScripts,
+          sessionId: "",
+          port: 0,
+          pid: 0,
+          status: "idle",
+          wsConnected: false
+        }
+      }
+    }
+  };
+}
+
+function migrateLegacyTerminalSnapshotPayload(payload: unknown): unknown {
+  const snapshotRecord = toRecord(payload);
+  if (!snapshotRecord) return payload;
+  if (!Array.isArray(snapshotRecord.tabs)) return payload;
+  return {
+    ...snapshotRecord,
+    tabs: snapshotRecord.tabs.map((entry) => migrateLegacyTerminalTabDescriptor(entry))
+  };
+}
 
 function ensureSafeWorkspaceId(id: string) {
   if (id.includes("..") || id.includes("/") || id.includes("\\")) {
@@ -71,8 +119,9 @@ async function writeIndex(userDataDir: string, index: WorkspaceListResponse) {
   await writeFileAtomic(getIndexPath(userDataDir), JSON.stringify(parsed, null, 2));
 }
 
-export async function saveWorkspaceSnapshot(userDataDir: string, payload: WorkspaceSnapshot) {
-  const snapshot = normalizeWorkspaceSnapshot(workspaceSnapshotSchema.parse(payload));
+export async function saveWorkspaceSnapshot(userDataDir: string, payload: unknown) {
+  const migrated = migrateLegacyTerminalSnapshotPayload(payload);
+  const snapshot = normalizeWorkspaceSnapshot(workspaceSnapshotSchema.parse(migrated));
   await ensureStore(userDataDir);
   await writeFileAtomic(
     getSnapshotPath(userDataDir, snapshot.layout.id),
@@ -116,7 +165,8 @@ export async function saveWorkspaceSnapshot(userDataDir: string, payload: Worksp
 export async function loadWorkspaceSnapshot(userDataDir: string, workspaceId: string) {
   const filePath = getSnapshotPath(userDataDir, workspaceId);
   const raw = await fs.readFile(filePath, "utf8");
-  const parsed = normalizeWorkspaceSnapshot(workspaceSnapshotSchema.parse(JSON.parse(raw)));
+  const migrated = migrateLegacyTerminalSnapshotPayload(JSON.parse(raw));
+  const parsed = normalizeWorkspaceSnapshot(workspaceSnapshotSchema.parse(migrated));
   const index = await readIndex(userDataDir);
   const updated = {
     workspaces: index.workspaces.map((entry) =>

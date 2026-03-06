@@ -21,6 +21,7 @@ export const IPC_CHANNELS = {
   workspaceClose: "workspace:close",
   workspaceDelete: "workspace:delete",
   workspaceGetDefault: "workspace:getDefault",
+  extensionGetHostConfig: "extension:getHostConfig",
   filePickDirectory: "file:pickDirectory",
   filePickFile: "file:pickFile",
   fileReadDir: "file:readDir",

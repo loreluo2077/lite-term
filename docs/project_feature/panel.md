@@ -46,7 +46,8 @@ Panel 只负责“布局与 Tab 容器能力”，不直接关心 Tab 内 Widget
 - 每个 pane 有自己的 tab 列表与当前激活 tab
 - tab 是容器，内容由 tab.widget 决定
 - tab 支持双击重命名
-- 支持 tab 右键菜单（重命名、关闭、移动到新 split、terminal 启动脚本入口）
+- 支持 tab 右键菜单（重命名、关闭、移动到新 split）
+- terminal 启动脚本入口对 `extension terminal` tab 可见
 
 ### 3.5 拖拽投放
 
@@ -68,6 +69,11 @@ pane 头部快捷按钮：
 - `+Note`
 - `Split H/V`
 - `Close`
+
+`+Term` 当前行为：
+
+- 先打开 Startup Scripts 弹窗
+- 创建 `extension terminal` tab（builtin extension 的 `terminal.local` webview widget）
 
 ## 5. 持久化行为
 
@@ -97,6 +103,8 @@ pane 头部快捷按钮：
 - 分割操作:
 - 在同一 pane 连续点击 `Split H` / `Split V`，确认布局正确
 - 拖动分隔条后刷新应用，确认尺寸比例被恢复
+- terminal 创建:
+- 点击 `+Term`，确认先出现 Startup Scripts 弹窗，再创建 `extension terminal` tab
 - 拖拽投放:
 - 将 tab 拖到 `center`，确认仅换 pane 不新增 split
 - 将 tab 拖到 `left/right/top/bottom`，确认自动分屏并移动 tab

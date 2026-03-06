@@ -29,7 +29,7 @@
     "lint": "echo \"TODO: wire workspace lint\"",
     "test": "pnpm test:integration",
     "test:integration": "tsx --test tests/integration/*.test.ts",
-    "test:e2e": "pnpm --filter @localterm/renderer build && playwright test tests/e2e/electron-smoke.spec.mjs",
+    "test:e2e": "NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost pnpm --filter @localterm/renderer build && NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost playwright test tests/e2e/electron-smoke.spec.mjs",
     "test:e2e:review": "pnpm test:e2e",
     "test:e2e:report": "playwright show-report output/playwright/report",
     "verify:quick": "pnpm typecheck && pnpm test:integration",

@@ -2,8 +2,7 @@ import { app, ipcMain } from "electron";
 import {
   IPC_CHANNELS,
   workspaceIdRequestSchema,
-  workspaceListResponseSchema,
-  workspaceSnapshotSchema
+  workspaceListResponseSchema
 } from "@localterm/shared";
 import {
   closeWorkspaceSnapshot,
@@ -20,8 +19,7 @@ function getUserDataDir() {
 
 export function registerWorkspaceIpcHandlers() {
   ipcMain.handle(IPC_CHANNELS.workspaceSave, async (_event, payload) => {
-    const snapshot = workspaceSnapshotSchema.parse(payload);
-    return await saveWorkspaceSnapshot(getUserDataDir(), snapshot);
+    return await saveWorkspaceSnapshot(getUserDataDir(), payload);
   });
 
   ipcMain.handle(IPC_CHANNELS.workspaceLoad, async (_event, payload) => {

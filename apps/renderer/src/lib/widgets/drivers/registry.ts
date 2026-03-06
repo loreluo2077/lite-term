@@ -1,5 +1,4 @@
 import type { WidgetKind } from "@localterm/shared";
-import { localTerminalWidgetDriver } from "./drivers/local-terminal-widget-driver";
 import { createNoopWidgetDriver } from "./drivers/noop-widget-driver";
 import { extensionWidgetDriver } from "./drivers/extension-widget-driver";
 import type { WidgetDriver } from "./types";
@@ -22,7 +21,6 @@ export function listRegisteredWidgetKinds(): WidgetKind[] {
   return [...widgetDriverRegistry.keys()];
 }
 
-registerWidgetDriver(localTerminalWidgetDriver);
 registerWidgetDriver(extensionWidgetDriver);
 registerWidgetDriver(createNoopWidgetDriver("terminal.ssh"));
 registerWidgetDriver(createNoopWidgetDriver("web.page"));

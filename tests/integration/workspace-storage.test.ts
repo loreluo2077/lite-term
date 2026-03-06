@@ -41,10 +41,17 @@ function makeSnapshot(id: string, tabId: string): WorkspaceSnapshot {
         id: tabId,
         title: "Local 1",
         widget: {
-          kind: "terminal.local",
-          input: { cols: 120, rows: 30 }
+          kind: "extension.widget",
+          input: {
+            extensionId: "builtin.workspace",
+            widgetId: "terminal.local",
+            state: {
+              cols: 120,
+              rows: 30
+            }
+          }
         },
-        restorePolicy: "recreate"
+        restorePolicy: "manual"
       }
     ]
   };
@@ -172,6 +179,78 @@ test("workspace storage: getDefault skips broken snapshot and returns next open 
     const defaultWorkspace = await getDefaultWorkspaceSnapshot(tempRoot);
     assert.ok(defaultWorkspace.workspace);
     assert.equal(defaultWorkspace.workspace?.layout.id, "ws-second");
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("workspace storage: migrates legacy terminal.local payload to extension terminal", async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "localterm-workspace-legacy-terminal-"));
+  try {
+    const legacySnapshot = {
+      layout: {
+        schemaVersion: 3,
+        id: "legacy-terminal",
+        name: "legacy-terminal",
+        activePaneId: "pane-1",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        root: {
+          id: "pane-1",
+          type: "leaf",
+          tabIds: ["tab-legacy"],
+          activeTabId: "tab-legacy"
+        }
+      },
+      tabs: [
+        {
+          id: "tab-legacy",
+          title: "Legacy Terminal",
+          widget: {
+            kind: "terminal.local",
+            input: {
+              cols: 140,
+              rows: 40,
+              startupScripts: [
+                {
+                  id: "s1",
+                  command: "echo hello",
+                  delayMs: 50,
+                  enabled: true
+                }
+              ]
+            }
+          },
+          restorePolicy: "recreate"
+        }
+      ]
+    };
+
+    await saveWorkspaceSnapshot(tempRoot, legacySnapshot);
+    const loaded = await loadWorkspaceSnapshot(tempRoot, "legacy-terminal");
+    assert.equal(loaded.tabs[0]?.widget.kind, "extension.widget");
+    assert.deepEqual(loaded.tabs[0]?.widget.input, {
+      extensionId: "builtin.workspace",
+      widgetId: "terminal.local",
+      state: {
+        cols: 140,
+        rows: 40,
+        startupScripts: [
+          {
+            id: "s1",
+            command: "echo hello",
+            delayMs: 50,
+            enabled: true
+          }
+        ],
+        sessionId: "",
+        port: 0,
+        pid: 0,
+        status: "idle",
+        wsConnected: false
+      }
+    });
+    assert.equal(loaded.tabs[0]?.restorePolicy, "manual");
   } finally {
     await fs.rm(tempRoot, { recursive: true, force: true });
   }

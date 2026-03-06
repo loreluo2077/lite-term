@@ -11,6 +11,7 @@ Workspace 是可持久化的协作快照，包含：
 
 - `widget.kind + widget.input`
 - snapshot 固定 `schemaVersion=3`
+- 主路径 widget（含 `extension terminal` / file / note）以 extension input（`extensionId/widgetId/state`）持久化
 
 ## 2. 本地存储模型
 
@@ -30,8 +31,9 @@ Workspace 是可持久化的协作快照，包含：
 ### 3.2 切换（Hot Switch）
 
 - 切换前自动保存当前 workspace（可持久化时）
-- 默认不 kill 现有 terminal session
+- 默认不 kill 现有 `extension terminal` session
 - 不在当前布局中的 tab 以 orphan 形式隐藏保活
+- `extension terminal` webview 在 orphan 容器中继续保活
 
 ### 3.3 重命名 / Save As
 
@@ -54,9 +56,9 @@ Workspace 是可持久化的协作快照，包含：
 ### 4.1 应用启动（Cold Boot）
 
 - 启动时读取默认 workspace 快照
-- 按 `restorePolicy` 恢复运行态：
-- `recreate`: 重建 terminal session
-- `manual`: 仅恢复 tab/widget 描述
+- 按 `restorePolicy` 恢复运行态（主路径为 `manual`）
+- `extension terminal`（`extensionId=builtin.workspace, widgetId=terminal.local`）在 webview bootstrap 时通过 `widgetApi.terminal.create` 自行拉起会话
+- 历史快照中的 `widget.kind=terminal.local` 会在存储层自动迁移为 `extension terminal` 描述
 
 ### 4.2 自动保存
 
@@ -93,6 +95,7 @@ Workspace 是可持久化的协作快照，包含：
 - 多 workspace 切换，确认激活态与列表状态正确
 - Rename / Save As / Close / 历史重开行为一致
 - 重启后快照恢复正确，restorePolicy 行为符合预期
+- 使用 `+Term` 创建 `extension terminal` 后，切换 workspace 再切回，确认 session 可继续交互
 
 ## 9. 人类验收
 
@@ -106,3 +109,4 @@ Workspace 是可持久化的协作快照，包含：
 - 图标与排序策略较基础（当前按索引顺序）
 - 关闭/删除确认流可继续优化
 - 暂无跨设备同步，仅本地持久化
+- `extension terminal` 的 session 复用依赖当前进程是否仍存在；冷启动通常会创建新 session

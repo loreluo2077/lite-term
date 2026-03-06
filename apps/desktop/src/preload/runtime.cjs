@@ -23,6 +23,9 @@ const api = {
     pickFile: (payload) => ipcRenderer.invoke("file:pickFile", payload ?? {}),
     readDir: (payload) => ipcRenderer.invoke("file:readDir", payload),
     readFile: (payload) => ipcRenderer.invoke("file:readFile", payload)
+  },
+  extension: {
+    getHostConfig: () => ipcRenderer.invoke("extension:getHostConfig")
   }
 };
 

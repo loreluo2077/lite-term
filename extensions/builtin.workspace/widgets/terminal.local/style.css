@@ -1,0 +1,93 @@
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #09090b;
+  color: #e4e4e7;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.shell {
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+  gap: 8px;
+  height: 100%;
+  padding: 8px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #a1a1aa;
+}
+
+input,
+button {
+  border-radius: 6px;
+  border: 1px solid #3f3f46;
+  background: #111113;
+  color: #fafafa;
+  height: 28px;
+  padding: 0 10px;
+}
+
+input[type="number"] {
+  width: 84px;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:hover {
+  background: #18181b;
+}
+
+button.danger {
+  border-color: #7f1d1d;
+  color: #fecaca;
+}
+
+.output {
+  overflow: auto;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  background: #0a0a0c;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.input-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.status {
+  display: flex;
+  justify-content: space-between;
+  color: #a1a1aa;
+}

@@ -33,6 +33,7 @@ export async function createMainWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      webviewTag: true,
       preload: preloadPath
     }
   });

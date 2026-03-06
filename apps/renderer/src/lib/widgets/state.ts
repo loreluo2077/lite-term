@@ -5,9 +5,11 @@
 import { atom } from "jotai";
 import type {
   CreateLocalSessionResponse,
+  ExtensionWidgetInput,
   SessionStatus,
   WidgetKind
 } from "@localterm/shared";
+import { extensionWidgetInputSchema } from "@localterm/shared";
 
 export type WidgetLifecycleStatus = "idle" | SessionStatus;
 export type TabWidget = {
@@ -27,11 +29,14 @@ type BaseWidgetTabRecord = {
 };
 
 export type WidgetTabRecord = BaseWidgetTabRecord;
-export type LocalTerminalWidgetTabRecord = WidgetTabRecord & {
-  widgetKind: "terminal.local";
+export type ExtensionTerminalWidgetTabRecord = WidgetTabRecord & {
+  widgetKind: "extension.widget";
+  widget: {
+    kind: "extension.widget";
+    input: ExtensionWidgetInput;
+  };
 };
 export type NonTerminalWidgetTabRecord = WidgetTabRecord & {
-  widgetKind: Exclude<WidgetKind, "terminal.local">;
   session?: undefined;
 };
 
@@ -43,8 +48,16 @@ export const activeWidgetTabAtom = atom((get) => {
   return get(widgetTabsAtom).find((tab) => tab.id === id) ?? null;
 });
 
-export function isLocalTerminalWidgetTab(
+export function isExtensionTerminalWidgetTab(
   tab: WidgetTabRecord
-): tab is LocalTerminalWidgetTabRecord {
-  return tab.widget.kind === "terminal.local" && tab.widgetKind === "terminal.local";
+): tab is ExtensionTerminalWidgetTabRecord {
+  if (tab.widget.kind !== "extension.widget" || tab.widgetKind !== "extension.widget") {
+    return false;
+  }
+  const parsed = extensionWidgetInputSchema.safeParse(tab.widget.input);
+  return (
+    parsed.success &&
+    parsed.data.extensionId === "builtin.workspace" &&
+    parsed.data.widgetId === "terminal.local"
+  );
 }

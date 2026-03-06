@@ -22,6 +22,6 @@ export default defineConfig({
       "pnpm --filter @localterm/renderer exec vite preview --host 127.0.0.1 --port 4173 --strictPort",
     url: "http://127.0.0.1:4173",
     timeout: 120_000,
-    reuseExistingServer: true
+    reuseExistingServer: false
   }
 });

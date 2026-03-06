@@ -1,0 +1,27 @@
+{
+  "manifestVersion": 2,
+  "id": "builtin.workspace",
+  "version": "0.1.0",
+  "entry": "localterm-extension://builtin.workspace/manifest.json",
+  "contributes": {
+    "widgetKinds": [
+      "terminal.local",
+      "file.browser",
+      "note.markdown"
+    ],
+    "commands": [],
+    "widgets": [
+      "terminal.local",
+      "file.browser",
+      "note.markdown"
+    ]
+  },
+  "permissions": [
+    "workspace.read",
+    "workspace.write",
+    "fs.read",
+    "session.list",
+    "session.create",
+    "session.kill"
+  ]
+}

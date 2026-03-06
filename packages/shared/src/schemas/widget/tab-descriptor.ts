@@ -4,7 +4,6 @@ import {
   extensionWidgetSchema,
   fileBrowserWidgetSchema,
   noteMarkdownWidgetSchema,
-  terminalLocalWidgetSchema,
   terminalSshWidgetSchema,
   webPageWidgetSchema,
   webBrowserWidgetSchema,
@@ -27,7 +26,6 @@ const sharedDescriptorSchema = {
 export const widgetTabDescriptorSchema = z.object({
   ...sharedDescriptorSchema,
   widget: z.discriminatedUnion("kind", [
-    terminalLocalWidgetSchema,
     terminalSshWidgetSchema,
     webPageWidgetSchema,
     webBrowserWidgetSchema,

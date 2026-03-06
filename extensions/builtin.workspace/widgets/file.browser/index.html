@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>File Widget</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="root">
+      <section class="toolbar">
+        <button id="btn-choose" type="button">Choose Folder</button>
+        <button id="btn-up" type="button">Up</button>
+        <button id="btn-hidden" type="button">Show Dotfiles</button>
+        <span id="current-path" class="path"></span>
+      </section>
+      <section id="list" class="list"></section>
+      <section class="footer">
+        <span id="selected" class="selected"></span>
+        <button id="btn-open" type="button">Open Markdown</button>
+      </section>
+    </main>
+    <script src="./main.js" type="module"></script>
+  </body>
+</html>

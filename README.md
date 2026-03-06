@@ -34,6 +34,18 @@ Lo-Fi Room 是一个 Electron + React 的本地应用，核心目标是把多终
 说明：
 - 运行时只有 widget：内置能力是 builtin widget，外部扩展通过 extension 包贡献 widget。
 
+## Webview Widget 运行时（新）
+
+- `extension widget` 统一通过 `webview` 运行，不再在 React 内直接渲染业务视图。
+- 主进程注册 `localterm-extension://` 协议，用于加载 `extensions/<extensionId>/widgets/<widgetId>/index.html` 资产。
+- `widget-webview.cjs` 在 webview 中注入 `window.widgetApi`，提供：
+- `widget.*`（上下文、改标题、打开新 widget）
+- `state.*`（get/set/patch + onDidChange）
+- `workspace.*`（当前工作区、tab 列表、激活 tab）
+- `fs.*`（选目录/文件、读目录、读文件）
+- `terminal.*`（create/write/resize/kill/list）
+- 内置 `terminal.local`、`file.browser`、`note.markdown` 已迁移为 webview widget（来源：`extensions/builtin.workspace`）。
+
 ## Packages 分层（base / widget / extension）
 
 - Base 能力：

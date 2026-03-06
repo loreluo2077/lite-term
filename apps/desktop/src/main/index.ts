@@ -3,15 +3,19 @@
  * This layer is the desktop shell, not the terminal engine.
  */
 import { app } from "electron";
+import { registerExtensionProtocol } from "../extensions/extension-protocol";
+import { registerExtensionIpcHandlers } from "../ipc/extension-handlers";
 import { registerFileIpcHandlers } from "../ipc/file-handlers";
 import { createMainWindow } from "../window/create-main-window";
 import { registerSessionIpcHandlers } from "../ipc/session-handlers";
 import { registerWorkspaceIpcHandlers } from "../ipc/workspace-handlers";
 
 export async function bootstrapDesktopApp() {
+  registerExtensionProtocol();
   registerSessionIpcHandlers();
   registerWorkspaceIpcHandlers();
   registerFileIpcHandlers();
+  registerExtensionIpcHandlers();
   await createMainWindow();
 }
 

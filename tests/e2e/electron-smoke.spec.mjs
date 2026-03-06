@@ -114,6 +114,12 @@ async function createTerminalWidgetInPane(pageHandle, testInfo, paneIndex = 0) {
   });
 }
 
+async function waitForVisibleWidgetRuntimeReady(pageHandle) {
+  const runtimeStatus = pageHandle.locator("[data-testid='widget-runtime-status']:visible").first();
+  await expect(runtimeStatus).toBeVisible({ timeout: 30_000 });
+  await expect(runtimeStatus).toHaveText(/runtime ready/i, { timeout: 30_000 });
+}
+
 async function setupTwoPaneWorkspaceWithMarkdownTab(pageHandle, testInfo) {
   await createWorkspaceFromMenu(pageHandle, testInfo);
 
@@ -315,7 +321,7 @@ test.afterAll(async () => {
   await writeHumanIndex();
 });
 
-test("workspace + local terminal widget end-to-end smoke", async ({}, testInfo) => {
+test("workspace + extension terminal widget end-to-end smoke", async ({}, testInfo) => {
   await createWorkspaceFromMenu(page, testInfo);
   await createTerminalWidgetInPane(page, testInfo, 0);
 });
@@ -343,6 +349,42 @@ test("panel split + widget creation + pane close flow", async ({}, testInfo) => 
     await expect(paneCloseButtons).toHaveCount(2);
     await paneCloseButtons.nth(1).click();
     await expect(page.getByRole("button", { name: /^Close$/ })).toHaveCount(1);
+  });
+});
+
+test("builtin webview widgets load runtime and protocol urls", async ({}, testInfo) => {
+  await createWorkspaceFromMenu(page, testInfo);
+
+  await runHumanStep(page, testInfo, "open-note-widget-webview", async () => {
+    await page.getByRole("button", { name: "+Note" }).first().click();
+    await expect(page.getByRole("tab", { name: "Markdown" }).first()).toBeVisible();
+    await waitForVisibleWidgetRuntimeReady(page);
+    const webviewSources = await page.locator("webview").evaluateAll((nodes) =>
+      nodes
+        .map((node) => node.getAttribute("src"))
+        .filter(Boolean)
+    );
+    expect(
+      webviewSources.some((src) =>
+        src.includes("localterm-extension://builtin.workspace/widgets/note.markdown/index.html")
+      )
+    ).toBeTruthy();
+  });
+
+  await runHumanStep(page, testInfo, "open-file-widget-webview", async () => {
+    await page.getByRole("button", { name: "+File" }).first().click();
+    await expect(page.getByRole("tab", { name: "Files" }).first()).toBeVisible();
+    await waitForVisibleWidgetRuntimeReady(page);
+    const webviewSources = await page.locator("webview").evaluateAll((nodes) =>
+      nodes
+        .map((node) => node.getAttribute("src"))
+        .filter(Boolean)
+    );
+    expect(
+      webviewSources.some((src) =>
+        src.includes("localterm-extension://builtin.workspace/widgets/file.browser/index.html")
+      )
+    ).toBeTruthy();
   });
 });
 

@@ -15,14 +15,14 @@
 
 | 功能点 | integration | e2e | 状态 |
 |---|---|---|---|
-| 创建 workspace | `tests/integration/workspace-storage.test.ts` | `workspace + local terminal widget end-to-end smoke` | 已覆盖 |
+| 创建 workspace | `tests/integration/workspace-storage.test.ts` | `workspace + extension terminal widget end-to-end smoke` | 已覆盖 |
 | 切换 workspace（热切换） | `tests/integration/workspace-storage.test.ts` | `workspace save-as hot switch keeps local session alive` | 已覆盖 |
 | 关闭到历史并重开 | `tests/integration/workspace-storage.test.ts` | `workspace close to history then reopen from picker` | 已覆盖 |
 | Save As 生成新快照 | `tests/integration/workspace-storage.test.ts` | `workspace save-as hot switch keeps local session alive` | 已覆盖 |
 | workspace 顺序稳定/追加规则 | `tests/integration/workspace-order.test.ts` | - | 已覆盖（integration） |
 | 空默认/损坏快照回退 | `tests/integration/workspace-storage.test.ts` | - | 已覆盖（integration） |
 | workspaceId 路径安全 | `tests/integration/workspace-storage.test.ts` | - | 已覆盖（integration） |
-| 冷启动 restorePolicy 差异（recreate/manual） | 部分：`tests/integration/workspace-schema.test.ts` | - | 部分覆盖 |
+| 旧快照终端迁移（legacy terminal.local -> extension terminal） | `tests/integration/workspace-storage.test.ts` | - | 已覆盖（integration） |
 
 ## 2. Panel / Tab
 
@@ -41,17 +41,19 @@
 
 | 功能点 | integration | e2e | 状态 |
 |---|---|---|---|
-| terminal.local widget 创建 | `tests/integration/workspace-schema.test.ts` | `workspace + local terminal widget...` | 已覆盖 |
-| note.markdown（builtin widget） | `tests/integration/workspace-schema.test.ts` | `panel split + widget creation + pane close flow` | 已覆盖 |
-| file.browser（builtin widget） | `tests/integration/workspace-schema.test.ts` | `panel split + widget creation + pane close flow` | 已覆盖 |
+| extension terminal widget 创建 | `tests/integration/workspace-schema.test.ts` | `workspace + extension terminal widget...` | 已覆盖 |
+| extension terminal webview runtime（builtin extension） | - | `workspace + extension terminal widget...` + `terminal startup scripts creation path works` | 已覆盖（e2e） |
+| note.markdown（builtin widget） | `tests/integration/workspace-schema.test.ts` | `panel split + widget creation + pane close flow` + `builtin webview widgets load runtime and protocol urls` | 已覆盖 |
+| file.browser（builtin widget） | `tests/integration/workspace-schema.test.ts` | `panel split + widget creation + pane close flow` + `builtin webview widgets load runtime and protocol urls` | 已覆盖 |
 | external widget（kind: extension.widget）协议与归一化 | `tests/integration/workspace-schema.test.ts` | - | 已覆盖（integration） |
 | 旧协议拒绝策略（workspace v2） | `tests/integration/workspace-schema.test.ts` | - | 已覆盖（integration） |
+| webview runtime ready / `localterm-extension://` 加载 | - | `builtin webview widgets load runtime and protocol urls` | 已覆盖（e2e） |
 
-## 4. Session（terminal.local 专属）
+## 4. Session（extension terminal 专属）
 
 | 功能点 | integration | e2e | 状态 |
 |---|---|---|---|
-| create -> ws -> output -> resize -> kill | `tests/integration/local-session.test.ts` | `workspace + local terminal widget...` | 已覆盖 |
+| create -> ws -> output -> resize -> kill | `tests/integration/local-session.test.ts` | `workspace + extension terminal widget...` | 已覆盖 |
 | 延迟连接后仍可用 | `tests/integration/local-session.test.ts` | - | 已覆盖（integration） |
 | 一会话一 worker（pid/port 唯一） | `tests/integration/local-session.test.ts` | - | 已覆盖（integration） |
 | registry lifecycle 更新 | `tests/integration/local-session.test.ts` | - | 已覆盖（integration） |
@@ -78,5 +80,5 @@
 
 1. `P1` 分隔条 resize 后重启恢复（panel size persistence）
 2. `P1` 关闭 terminal tab 后 session 真正释放（UI+control-plane 联动）
-3. `P2` 冷启动时 restorePolicy=recreate/manual 的端到端差异路径
+3. `P2` 冷启动 legacy snapshot 迁移后的端到端回归路径
 4. `P2` extension.widget 的多扩展并存冲突场景（同 widgetId 不同 extensionId）回归

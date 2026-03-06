@@ -42,6 +42,8 @@ Lo-Fi Room 聚焦多 agent 并行协作、多 workspace 切换、以及终端与
 
 说明：
 - 运行时只有 widget；extension 包负责发布/安装/权限，并贡献外部 widget。
+- `terminal.local`、`file.browser` 与 `note.markdown` 已迁移到 webview runtime（通过 `localterm-extension://` 协议加载）
+- webview 通过 `window.widgetApi` 与宿主通信（state/workspace/fs/widget/terminal）
 
 ### 3.4 Session（Terminal Widget 专属）
 

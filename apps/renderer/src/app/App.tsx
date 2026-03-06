@@ -6,12 +6,11 @@ import { useAtom } from "jotai";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   activeWidgetTabIdAtom as activeTabIdAtom,
-  isLocalTerminalWidgetTab,
+  isExtensionTerminalWidgetTab,
   widgetTabsAtom as tabsAtom,
   type WidgetTabRecord
 } from "../lib/widgets/state";
 import { PluginWidgetPane } from "../components/widgets/PluginWidgetPane";
-import { LocalTerminalWidgetPane } from "../components/widgets/LocalTerminalWidgetPane";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,7 +21,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getWidgetDriver, type LocalTerminalWidgetInput } from "../lib/widgets/drivers";
+import { getWidgetDriver } from "../lib/widgets/drivers";
 import type {
   ExtensionWidgetInput,
   LocalSessionStartupScript,
@@ -47,6 +46,7 @@ import {
 } from "../lib/atoms/workspace";
 import {
   createDefaultWorkspaceLayout,
+  findPaneIdByTabId,
   getLeafPaneById,
   listLeafPaneIds
 } from "../lib/workspace/pane-tree";
@@ -54,7 +54,8 @@ import {
   listWidgetTemplates,
   parseWidgetInput,
   makeWidgetInput,
-  type OpenWidgetRequest
+  type OpenWidgetRequest,
+  type WidgetTabSummary
 } from "../lib/plugins";
 import {
   Panel,
@@ -114,8 +115,6 @@ const BULK_STRESS_DEFAULTS = {
   burstPerTick: 120,
   payloadSize: 140
 } as const;
-const STARTUP_READY_FALLBACK_MS = 1200;
-const STARTUP_READY_QUIET_MS = 120;
 
 function nextTabTitle(count: number) {
   return `Local ${count}`;
@@ -231,7 +230,7 @@ function dropPreviewOverlayClass(zone: DropPreviewZone) {
   return "absolute bottom-2 left-2 right-2 h-1/2 rounded-md border border-sky-400 bg-sky-400/10";
 }
 
-const DEFAULT_LOCAL_TERMINAL_INPUT: LocalTerminalWidgetInput = {
+const DEFAULT_TERMINAL_SIZE = {
   cols: 120,
   rows: 30
 };
@@ -247,14 +246,6 @@ function sanitizeDelayMs(value: number) {
   return Math.max(0, Math.floor(value));
 }
 
-function toScriptCommandLine(command: string) {
-  const trimmed = command.trim();
-  if (!trimmed) return "";
-  if (trimmed.endsWith("\n") || trimmed.endsWith("\r\n")) return trimmed;
-  const isWindows = navigator.platform.toLowerCase().includes("win");
-  return `${trimmed}${isWindows ? "\r\n" : "\n"}`;
-}
-
 function draftsToStartupScripts(drafts: StartupScriptDraft[]): LocalSessionStartupScript[] {
   return drafts
     .filter((entry) => entry.enabled && entry.command.trim().length > 0)
@@ -266,31 +257,25 @@ function draftsToStartupScripts(drafts: StartupScriptDraft[]): LocalSessionStart
     }));
 }
 
-function parseStartupScriptsFromInput(input: Record<string, unknown>): LocalSessionStartupScript[] {
-  const raw = input.startupScripts;
-  if (!Array.isArray(raw)) return [];
-  const parsed: LocalSessionStartupScript[] = [];
-  raw.forEach((item, index) => {
-    if (!item || typeof item !== "object") return;
-    const candidate = item as Partial<LocalSessionStartupScript>;
-    if (typeof candidate.command !== "string" || candidate.command.trim().length === 0) return;
-    const command = candidate.command.trim();
-    const delayMs = sanitizeDelayMs(
-      typeof candidate.delayMs === "number" ? candidate.delayMs : Number(candidate.delayMs ?? 0)
-    );
-    const fallbackId = `legacy-${index}-${delayMs}-${command}`;
-    parsed.push({
-      id: typeof candidate.id === "string" && candidate.id.length > 0 ? candidate.id : fallbackId,
-      command,
-      delayMs,
-      enabled: candidate.enabled !== false
-    });
-  });
-  return parsed.filter((entry) => entry.enabled);
+function resolveTerminalStateFromInput(input: Record<string, unknown>): Record<string, unknown> {
+  const parsed = parseWidgetInput(input);
+  if (
+    parsed &&
+    parsed.extensionId === "builtin.workspace" &&
+    parsed.widgetId === "terminal.local"
+  ) {
+    return parsed.state;
+  }
+  const legacyState = input.state;
+  if (legacyState && typeof legacyState === "object") {
+    return legacyState as Record<string, unknown>;
+  }
+  return input;
 }
 
 function parseStartupScriptDraftsFromInput(input: Record<string, unknown>): StartupScriptDraft[] {
-  const raw = input.startupScripts;
+  const state = resolveTerminalStateFromInput(input);
+  const raw = state.startupScripts;
   if (!Array.isArray(raw)) return [];
   const parsed: StartupScriptDraft[] = [];
   raw.forEach((item, index) => {
@@ -330,6 +315,79 @@ function normalizeExtensionWidgetInput(input: unknown): ExtensionWidgetInput {
   return parseWidgetInput(input) ?? defaultNoteWidgetInput();
 }
 
+function isBuiltinTerminalExtensionInput(input: unknown): input is ExtensionWidgetInput {
+  const parsed = parseWidgetInput(input);
+  return Boolean(
+    parsed &&
+      parsed.extensionId === "builtin.workspace" &&
+      parsed.widgetId === "terminal.local"
+  );
+}
+
+function resolveTerminalSessionIdFromInput(input: Record<string, unknown>) {
+  const state = resolveTerminalStateFromInput(input);
+  return typeof state.sessionId === "string" ? state.sessionId : "";
+}
+
+async function writeSessionInputBySessionId(sessionId: string, data: string) {
+  const listed = await window.localtermApi.session.listSessions();
+  const matched = listed.sessions.find((entry) => entry.sessionId === sessionId);
+  if (!matched?.port) return false;
+
+  await new Promise<void>((resolve, reject) => {
+    const ws = new WebSocket(`ws://127.0.0.1:${matched.port}`);
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try {
+        ws.close();
+      } catch {
+        // ignore
+      }
+      reject(new Error("write session timeout"));
+    }, 3000);
+
+    ws.addEventListener("open", () => {
+      if (settled) return;
+      try {
+        ws.send(data);
+      } catch (error) {
+        settled = true;
+        clearTimeout(timer);
+        reject(error instanceof Error ? error : new Error(String(error)));
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      setTimeout(() => {
+        try {
+          ws.close();
+        } catch {
+          // ignore
+        }
+      }, 30);
+      resolve();
+    });
+
+    ws.addEventListener("error", () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(new Error("write session websocket error"));
+    });
+
+    ws.addEventListener("close", () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(new Error("write session websocket closed before open"));
+    });
+  });
+
+  return true;
+}
+
 function resolveExtensionWidgetKind(input: ExtensionWidgetInput): WidgetKind {
   if (input.extensionId !== "builtin.workspace") return "extension.widget";
   if (input.widgetId === "file.browser") return "file.browser";
@@ -342,16 +400,6 @@ function toPersistedTabDescriptors(records: WidgetTabRecord[]): WidgetTabDescrip
   return records.map((record) => {
     const widget = record.widget;
     switch (widget.kind) {
-      case "terminal.local":
-        return {
-          id: record.id,
-          title: record.title,
-          widget: {
-            kind: "terminal.local",
-            input: (widget.input as LocalTerminalWidgetInput) ?? DEFAULT_LOCAL_TERMINAL_INPUT
-          },
-          restorePolicy: "recreate"
-        } as WidgetTabDescriptor;
       case "file.browser":
       case "note.markdown":
       case "extension.widget":
@@ -483,6 +531,7 @@ export function App() {
   } | null>(null);
   const [workspaceRenameTargetId, setWorkspaceRenameTargetId] = useState<string | null>(null);
   const [workspaceRenameName, setWorkspaceRenameName] = useState("");
+  const [widgetWebviewPreloadUrl, setWidgetWebviewPreloadUrl] = useState<string | null>(null);
   const [perfPanelOpen, setPerfPanelOpen] = useState(false);
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
@@ -492,24 +541,23 @@ export function App() {
   const tabCounterRef = useRef(0);
   const tabsRef = useRef<WidgetTabRecord[]>([]);
   const restoringWorkspaceRef = useRef(false);
-  const commandChannelsRef = useRef<Map<string, (text: string) => void>>(new Map());
-  const pendingCommandsRef = useRef<Map<string, string[]>>(new Map());
-  const startupScriptTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>[]>>(new Map());
-  const executedStartupScriptsRef = useRef<Map<string, Set<string>>>(new Map());
-  const pendingStartupRerunTabIdsRef = useRef<Set<string>>(new Set());
-  const markStartupReadyOutputRef = useRef<(tabId: string, bytes: number) => void>(() => undefined);
-  const startupReadyGateRef = useRef<Map<
-    string,
-    {
-      fallbackTimer: ReturnType<typeof setTimeout> | null;
-      quietTimer: ReturnType<typeof setTimeout> | null;
-    }
-  >>(new Map());
   const widgetTemplates = useMemo(() => listWidgetTemplates(), []);
   const leafPaneIds = useMemo(() => listLeafPaneIds(workspace.root), [workspace.root]);
   const workspaceById = useMemo(
     () => new Map(workspaceList.workspaces.map((entry) => [entry.id, entry])),
     [workspaceList]
+  );
+  const tabsSummary = useMemo(
+    () =>
+      tabs.map(
+        (entry) =>
+          ({
+            tabId: entry.id,
+            title: entry.title,
+            kind: entry.widget.kind
+          } as WidgetTabSummary)
+      ),
+    [tabs]
   );
   const openWorkspaceEntries = useMemo(
     () => workspaceList.workspaces.filter((entry) => !entry.isClosed),
@@ -526,7 +574,7 @@ export function App() {
   const terminalStartupScriptsTargetTab = useMemo(() => {
     if (!terminalStartupScriptsTargetTabId) return null;
     const entry = tabs.find((tab) => tab.id === terminalStartupScriptsTargetTabId);
-    if (!entry || !isLocalTerminalWidgetTab(entry)) return null;
+    if (!entry || !isExtensionTerminalWidgetTab(entry)) return null;
     return entry;
   }, [tabs, terminalStartupScriptsTargetTabId]);
 
@@ -537,43 +585,51 @@ export function App() {
     return leafPaneIds[0] ?? "pane-1";
   }, [leafPaneIds, workspace.activePaneId, workspace.root]);
 
-  const updateStatus = useCallback((tabId: string, status: WidgetTabRecord["status"]) => {
-    setTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, status } : t)));
-  }, [setTabs]);
-
-  const updateWsConnected = useCallback((tabId: string, connected: boolean) => {
-    setTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, wsConnected: connected } : t)));
-  }, [setTabs]);
-
-  const recordTraffic = useCallback((tabId: string, bytes: number, lines: number) => {
-    markStartupReadyOutputRef.current(tabId, bytes);
-    setTabPerf((prev) => {
-      const current = prev[tabId] ?? initialTabPerfState();
-      return {
-        ...prev,
-        [tabId]: {
-          ...current,
-          bytesTotal: current.bytesTotal + bytes,
-          linesTotal: current.linesTotal + lines,
-          chunks: current.chunks + 1,
-          updatedAt: Date.now()
-        }
-      };
-    });
+  useEffect(() => {
+    let cancelled = false;
+    void window.localtermApi.extension
+      .getHostConfig()
+      .then((config) => {
+        if (cancelled) return;
+        setWidgetWebviewPreloadUrl(config.widgetWebviewPreloadUrl);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error("load widget host config failed", error);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const updateTabInput = useCallback((tabId: string, input: Record<string, unknown>) => {
     setTabs((prev) =>
       prev.map((tab) =>
         tab.id === tabId
-          ? {
-              ...tab,
-              input,
-              widget: {
-                ...tab.widget,
-                input
-              }
-            }
+          ? (() => {
+              const base = {
+                ...tab,
+                input,
+                widget: {
+                  ...tab.widget,
+                  input
+                }
+              };
+              if (!isBuiltinTerminalExtensionInput(input)) return base;
+              const state = input.state as Record<string, unknown>;
+              const nextStatusRaw = state.status;
+              const nextStatus =
+                typeof nextStatusRaw === "string" &&
+                ["idle", "starting", "ready", "exited", "error"].includes(nextStatusRaw)
+                  ? (nextStatusRaw as WidgetTabRecord["status"])
+                  : base.status;
+              const wsConnected = state.wsConnected === true;
+              return {
+                ...base,
+                status: nextStatus,
+                wsConnected
+              };
+            })()
           : tab
       )
     );
@@ -629,7 +685,7 @@ export function App() {
 
   const openTerminalStartupScriptsEditor = useCallback((tabId: string) => {
     const tab = tabsRef.current.find((entry) => entry.id === tabId);
-    if (!tab || !isLocalTerminalWidgetTab(tab)) return;
+    if (!tab || !isExtensionTerminalWidgetTab(tab)) return;
     setTerminalStartupScriptsTargetTabId(tabId);
     setPendingTerminalCreation(null);
     setTerminalStartupScriptDrafts(parseStartupScriptDraftsFromInput(tab.widget.input));
@@ -652,7 +708,10 @@ export function App() {
     const paneId = payload.paneId ?? resolvedActivePaneId;
     const tabId = globalThis.crypto?.randomUUID?.() ?? String(Date.now());
     const driver = getWidgetDriver(payload.widgetKind);
-    const initialStatus: WidgetTabRecord["status"] = payload.widgetKind === "terminal.local" ? "starting" : "idle";
+    const initialStatus: WidgetTabRecord["status"] =
+      payload.widgetKind === "extension.widget" && isBuiltinTerminalExtensionInput(payload.input)
+        ? "starting"
+        : "idle";
     const tab: WidgetTabRecord = {
       id: tabId,
       widgetKind: payload.widgetKind,
@@ -674,7 +733,7 @@ export function App() {
       setTabs((prev) =>
         prev.map((t) =>
           t.id === tabId
-            ? isLocalTerminalWidgetTab(t)
+            ? handle.session
               ? {
                   ...t,
                   session: handle.session,
@@ -702,14 +761,26 @@ export function App() {
 
   const createLocalTerminalTab = useCallback(async (activate = true, paneId = resolvedActivePaneId) => {
     tabCounterRef.current += 1;
+    const template = widgetTemplates.find(
+      (entry) => entry.extensionId === "builtin.workspace" && entry.widgetId === "terminal.local"
+    );
+    if (!template) {
+      console.error("terminal widget template not found");
+      return "";
+    }
+    const input = makeWidgetInput(template, {
+      cols: DEFAULT_TERMINAL_SIZE.cols,
+      rows: DEFAULT_TERMINAL_SIZE.rows,
+      startupScripts: []
+    });
     return await createWidgetTabWithDriver({
-      widgetKind: "terminal.local",
+      widgetKind: resolveExtensionWidgetKind(input),
       title: nextTabTitle(tabCounterRef.current),
-      input: DEFAULT_LOCAL_TERMINAL_INPUT,
+      input: input as Record<string, unknown>,
       activate,
       paneId
     });
-  }, [createWidgetTabWithDriver, resolvedActivePaneId]);
+  }, [createWidgetTabWithDriver, resolvedActivePaneId, widgetTemplates]);
 
   const createLocalTerminalTabWithScripts = useCallback(async (
     payload: {
@@ -719,30 +790,44 @@ export function App() {
     }
   ) => {
     tabCounterRef.current += 1;
-    const input: LocalTerminalWidgetInput = {
-      ...DEFAULT_LOCAL_TERMINAL_INPUT,
-      ...(payload.startupScripts.length > 0 ? { startupScripts: payload.startupScripts } : {})
-    };
+    const template = widgetTemplates.find(
+      (entry) => entry.extensionId === "builtin.workspace" && entry.widgetId === "terminal.local"
+    );
+    if (!template) {
+      console.error("terminal widget template not found");
+      return "";
+    }
+
+    const input = makeWidgetInput(template, {
+      cols: DEFAULT_TERMINAL_SIZE.cols,
+      rows: DEFAULT_TERMINAL_SIZE.rows,
+      startupScripts: payload.startupScripts
+    });
+
     return await createWidgetTabWithDriver({
-      widgetKind: "terminal.local",
+      widgetKind: resolveExtensionWidgetKind(input),
       title: nextTabTitle(tabCounterRef.current),
-      input,
+      input: input as Record<string, unknown>,
       activate: payload.activate,
       paneId: payload.paneId
     });
-  }, [createWidgetTabWithDriver]);
+  }, [createWidgetTabWithDriver, widgetTemplates]);
 
   const saveTerminalStartupScriptsEditor = useCallback(() => {
     const startupScripts = draftsToStartupScripts(terminalStartupScriptDrafts);
     if (terminalStartupScriptsTargetTabId) {
       setTabs((prev) =>
         prev.map((tab) => {
-          if (tab.id !== terminalStartupScriptsTargetTabId || !isLocalTerminalWidgetTab(tab)) {
+          if (tab.id !== terminalStartupScriptsTargetTabId || !isExtensionTerminalWidgetTab(tab)) {
             return tab;
           }
-          const nextInput: LocalTerminalWidgetInput = {
-            ...(tab.widget.input as LocalTerminalWidgetInput),
-            ...(startupScripts.length > 0 ? { startupScripts } : { startupScripts: [] })
+          const parsedInput = normalizeExtensionWidgetInput(tab.widget.input);
+          const nextInput: ExtensionWidgetInput = {
+            ...parsedInput,
+            state: {
+              ...parsedInput.state,
+              startupScripts
+            }
           };
           return {
             ...tab,
@@ -805,177 +890,12 @@ export function App() {
     return await createWidgetTabWithDriver(payload);
   }, [createWidgetTabWithDriver, widgetTemplates]);
 
-  const clearStartupScriptTimersForSession = useCallback((sessionKey: string) => {
-    const timers = startupScriptTimersRef.current.get(sessionKey);
-    if (!timers) return;
-    for (const timer of timers) {
-      clearTimeout(timer);
-    }
-    startupScriptTimersRef.current.delete(sessionKey);
-  }, []);
-
-  const clearStartupReadyGateForSession = useCallback((sessionKey: string) => {
-    const gate = startupReadyGateRef.current.get(sessionKey);
-    if (!gate) return;
-    if (gate.fallbackTimer) clearTimeout(gate.fallbackTimer);
-    if (gate.quietTimer) clearTimeout(gate.quietTimer);
-    startupReadyGateRef.current.delete(sessionKey);
-  }, []);
-
-  const clearStartupScriptTimersForTab = useCallback((tabId: string) => {
-    for (const sessionKey of startupScriptTimersRef.current.keys()) {
-      if (!sessionKey.startsWith(`${tabId}:`)) continue;
-      clearStartupScriptTimersForSession(sessionKey);
-    }
-  }, [clearStartupScriptTimersForSession]);
-
-  const clearStartupReadyGateForTab = useCallback((tabId: string) => {
-    for (const sessionKey of startupReadyGateRef.current.keys()) {
-      if (!sessionKey.startsWith(`${tabId}:`)) continue;
-      clearStartupReadyGateForSession(sessionKey);
-    }
-  }, [clearStartupReadyGateForSession]);
-
-  const clearExecutedStartupScriptsForTab = useCallback((tabId: string) => {
-    for (const sessionKey of executedStartupScriptsRef.current.keys()) {
-      if (!sessionKey.startsWith(`${tabId}:`)) continue;
-      executedStartupScriptsRef.current.delete(sessionKey);
-    }
-  }, []);
-
-  const sendOrQueueCommand = useCallback((tabId: string, command: string) => {
-    const send = commandChannelsRef.current.get(tabId);
-    if (send) {
-      send(command);
-      return true;
-    }
-    const pending = pendingCommandsRef.current.get(tabId) ?? [];
-    pending.push(command);
-    pendingCommandsRef.current.set(tabId, pending);
-    return false;
-  }, []);
-
-  const runStartupScriptsForSession = useCallback((sessionKey: string) => {
-    clearStartupReadyGateForSession(sessionKey);
-    clearStartupScriptTimersForSession(sessionKey);
-
-    const separatorIndex = sessionKey.indexOf(":");
-    if (separatorIndex <= 0) return;
-    const tabId = sessionKey.slice(0, separatorIndex);
-    const expectedSessionId = sessionKey.slice(separatorIndex + 1);
-    const tab = tabsRef.current.find((entry) => entry.id === tabId);
-    if (!tab || !isLocalTerminalWidgetTab(tab)) return;
-    if (!tab.session?.sessionId || tab.session.sessionId !== expectedSessionId) return;
-
-    const scripts = parseStartupScriptsFromInput(tab.widget.input);
-    if (scripts.length === 0) return;
-
-    const executed = executedStartupScriptsRef.current.get(sessionKey) ?? new Set<string>();
-    executedStartupScriptsRef.current.set(sessionKey, executed);
-
-    const scheduledTimers: ReturnType<typeof setTimeout>[] = [];
-    for (const script of scripts) {
-      if (executed.has(script.id)) continue;
-      const delayMs = sanitizeDelayMs(script.delayMs);
-      const timer = setTimeout(() => {
-        const current = tabsRef.current.find((entry) => entry.id === tabId);
-        if (!current || !isLocalTerminalWidgetTab(current)) return;
-        if (!current.session?.sessionId || current.session.sessionId !== expectedSessionId) return;
-        if (executed.has(script.id)) return;
-        const line = toScriptCommandLine(script.command);
-        if (!line) return;
-        sendOrQueueCommand(tabId, line);
-        executed.add(script.id);
-      }, delayMs);
-      scheduledTimers.push(timer);
-    }
-
-    if (scheduledTimers.length > 0) {
-      startupScriptTimersRef.current.set(sessionKey, scheduledTimers);
-    }
-  }, [clearStartupReadyGateForSession, clearStartupScriptTimersForSession, sendOrQueueCommand]);
-
-  const markStartupReadyOutput = useCallback((tabId: string, bytes: number) => {
-    if (bytes <= 0) return;
-    const tab = tabsRef.current.find((entry) => entry.id === tabId);
-    if (!tab || !isLocalTerminalWidgetTab(tab) || !tab.session?.sessionId) return;
-    const sessionKey = `${tabId}:${tab.session.sessionId}`;
-    const gate = startupReadyGateRef.current.get(sessionKey);
-    if (!gate) return;
-    if (gate.quietTimer) clearTimeout(gate.quietTimer);
-    gate.quietTimer = setTimeout(() => {
-      runStartupScriptsForSession(sessionKey);
-    }, STARTUP_READY_QUIET_MS);
-  }, [runStartupScriptsForSession]);
-
-  useEffect(() => {
-    markStartupReadyOutputRef.current = markStartupReadyOutput;
-  }, [markStartupReadyOutput]);
-
-  const handleTerminalSessionReady = useCallback((tabId: string) => {
-    const tab = tabsRef.current.find((entry) => entry.id === tabId);
-    if (!tab || !isLocalTerminalWidgetTab(tab) || !tab.session?.sessionId) return;
-    const sessionKey = `${tabId}:${tab.session.sessionId}`;
-    clearStartupReadyGateForSession(sessionKey);
-    const fallbackTimer = setTimeout(() => {
-      runStartupScriptsForSession(sessionKey);
-    }, STARTUP_READY_FALLBACK_MS);
-    startupReadyGateRef.current.set(sessionKey, {
-      fallbackTimer,
-      quietTimer: null
-    });
-  }, [clearStartupReadyGateForSession, runStartupScriptsForSession]);
-
-  useEffect(() => {
-    for (const tab of tabs) {
-      if (!isLocalTerminalWidgetTab(tab)) continue;
-      if (tab.status !== "ready") continue;
-      if (!tab.session?.sessionId) continue;
-      const scripts = parseStartupScriptsFromInput(tab.widget.input);
-      if (scripts.length === 0) continue;
-
-      const sessionKey = `${tab.id}:${tab.session.sessionId}`;
-      if (startupReadyGateRef.current.has(sessionKey)) continue;
-      if (startupScriptTimersRef.current.has(sessionKey)) continue;
-
-      const executed = executedStartupScriptsRef.current.get(sessionKey);
-      if (executed && executed.size >= scripts.length) continue;
-
-      handleTerminalSessionReady(tab.id);
-    }
-  }, [handleTerminalSessionReady, tabs]);
-
-  useEffect(() => {
-    if (pendingStartupRerunTabIdsRef.current.size === 0) return;
-
-    for (const tab of tabs) {
-      if (!pendingStartupRerunTabIdsRef.current.has(tab.id)) continue;
-      if (!isLocalTerminalWidgetTab(tab)) {
-        pendingStartupRerunTabIdsRef.current.delete(tab.id);
-        continue;
-      }
-      const scripts = parseStartupScriptsFromInput(tab.widget.input);
-      if (scripts.length === 0) {
-        pendingStartupRerunTabIdsRef.current.delete(tab.id);
-        continue;
-      }
-      if (tab.status !== "ready") continue;
-      if (!tab.session?.sessionId) continue;
-
-      const sessionKey = `${tab.id}:${tab.session.sessionId}`;
-      clearStartupScriptTimersForSession(sessionKey);
-      clearStartupReadyGateForSession(sessionKey);
-      clearExecutedStartupScriptsForTab(tab.id);
-      handleTerminalSessionReady(tab.id);
-      pendingStartupRerunTabIdsRef.current.delete(tab.id);
-    }
-  }, [
-    clearExecutedStartupScriptsForTab,
-    clearStartupReadyGateForSession,
-    clearStartupScriptTimersForSession,
-    handleTerminalSessionReady,
-    tabs
-  ]);
+  const activateTabFromWidgetApi = useCallback((tabId: string) => {
+    const paneId = findPaneIdByTabId(workspace.root, tabId);
+    if (!paneId) return;
+    activateTabInPane({ paneId, tabId });
+    setActiveTabId(tabId);
+  }, [activateTabInPane, setActiveTabId, workspace.root]);
 
   const closeTab = async (tabId: string) => {
     const snapshot = tabs;
@@ -984,7 +904,8 @@ export function App() {
       const driver = getWidgetDriver(target.widget.kind);
       await driver.dispose({
         session: target.session,
-        status: target.status
+        status: target.status,
+        input: target.widget.input
       });
     }
     setTabs((prev) => prev.filter((t) => t.id !== tabId));
@@ -993,50 +914,11 @@ export function App() {
       const next = snapshot.find((t) => t.id !== tabId);
       setActiveTabId(next?.id ?? "");
     }
-    commandChannelsRef.current.delete(tabId);
-    pendingCommandsRef.current.delete(tabId);
-    clearStartupScriptTimersForTab(tabId);
-    clearStartupReadyGateForTab(tabId);
-    clearExecutedStartupScriptsForTab(tabId);
   };
-
-  const updateCommandChannel = useCallback((tabId: string, send: ((text: string) => void) | null) => {
-    if (send) {
-      commandChannelsRef.current.set(tabId, send);
-      const pending = pendingCommandsRef.current.get(tabId);
-      if (pending?.length) {
-        for (const cmd of pending) {
-          send(cmd);
-        }
-        pendingCommandsRef.current.delete(tabId);
-      }
-    } else {
-      commandChannelsRef.current.delete(tabId);
-      clearStartupScriptTimersForTab(tabId);
-      clearStartupReadyGateForTab(tabId);
-    }
-  }, [clearStartupReadyGateForTab, clearStartupScriptTimersForTab]);
 
   useEffect(() => {
     tabsRef.current = tabs;
   }, [tabs]);
-
-  useEffect(() => {
-    return () => {
-      for (const timers of startupScriptTimersRef.current.values()) {
-        for (const timer of timers) {
-          clearTimeout(timer);
-        }
-      }
-      startupScriptTimersRef.current.clear();
-      executedStartupScriptsRef.current.clear();
-      for (const gate of startupReadyGateRef.current.values()) {
-        if (gate.fallbackTimer) clearTimeout(gate.fallbackTimer);
-        if (gate.quietTimer) clearTimeout(gate.quietTimer);
-      }
-      startupReadyGateRef.current.clear();
-    };
-  }, []);
 
   useEffect(() => {
     if (!terminalStartupScriptsTargetTabId) return;
@@ -1074,7 +956,8 @@ export function App() {
           const driver = getWidgetDriver(record.widget.kind);
           await driver.dispose({
             session: record.session,
-            status: record.status
+            status: record.status,
+            input: record.widget.input
           });
         } catch {
           // ignore one-off dispose failures when switching workspace
@@ -1088,24 +971,6 @@ export function App() {
     try {
       if (options.killExisting) {
         await disposeTabs(tabsRef.current);
-      }
-
-      commandChannelsRef.current.clear();
-      pendingCommandsRef.current.clear();
-      if (options.killExisting || options.coldBoot) {
-        for (const timers of startupScriptTimersRef.current.values()) {
-          for (const timer of timers) {
-            clearTimeout(timer);
-          }
-        }
-        startupScriptTimersRef.current.clear();
-        executedStartupScriptsRef.current.clear();
-        for (const gate of startupReadyGateRef.current.values()) {
-          if (gate.fallbackTimer) clearTimeout(gate.fallbackTimer);
-          if (gate.quietTimer) clearTimeout(gate.quietTimer);
-        }
-        startupReadyGateRef.current.clear();
-        pendingStartupRerunTabIdsRef.current.clear();
       }
 
       if (!snapshot) {
@@ -1143,7 +1008,10 @@ export function App() {
                 widget,
                 title: descriptor.customTitle ?? descriptor.title,
                 input: widget.input,
-                status: descriptor.restorePolicy === "recreate" ? "starting" : "idle",
+                status:
+                  widget.kind === "extension.widget" && isBuiltinTerminalExtensionInput(widget.input)
+                    ? "starting"
+                    : "idle",
                 wsConnected: false
               });
             }
@@ -1168,52 +1036,16 @@ export function App() {
           widget,
           title: descriptor.customTitle ?? descriptor.title,
           input: widget.input,
-          status: descriptor.restorePolicy === "recreate" ? "starting" : "idle",
+          status:
+            widget.kind === "extension.widget" && isBuiltinTerminalExtensionInput(widget.input)
+              ? "starting"
+              : "idle",
           wsConnected: false
         };
       });
       tabCounterRef.current = Math.max(tabCounterRef.current, restoredTabs.length);
       setTabs(restoredTabs);
       setActiveTabId(resolveInitialActiveTabId(snapshot.layout.root, snapshot.layout.activePaneId));
-
-      for (const descriptor of snapshot.tabs) {
-        if (descriptor.restorePolicy !== "recreate") continue;
-        const descriptorWidget = resolveWidgetDescriptorFromTabDescriptor(descriptor);
-        if (descriptorWidget.kind !== "terminal.local") continue;
-
-        try {
-          const driver = getWidgetDriver("terminal.local");
-          const handle = await driver.restore(descriptorWidget.input as LocalTerminalWidgetInput);
-          setTabs((prev) =>
-            prev.map((tab) =>
-              tab.id === descriptor.id && isLocalTerminalWidgetTab(tab)
-                ? {
-                    ...tab,
-                    input: descriptorWidget.input,
-                    widget: {
-                      ...tab.widget,
-                      input: descriptorWidget.input
-                    },
-                    session: handle.session,
-                    status: handle.status
-                  }
-                : tab
-            )
-          );
-        } catch (error) {
-          console.error("restore tab failed", descriptor.id, error);
-          setTabs((prev) =>
-            prev.map((tab) =>
-              tab.id === descriptor.id
-                ? {
-                    ...tab,
-                    status: "error"
-                  }
-                : tab
-            )
-          );
-        }
-      }
     } finally {
       restoringWorkspaceRef.current = false;
     }
@@ -1258,17 +1090,7 @@ export function App() {
       if (canPersistCurrentWorkspace()) {
         await saveWorkspaceNow();
       }
-      const reopenFromHistory = workspaceById.get(workspaceId)?.isClosed === true;
       const snapshot = await window.localtermApi.workspace.load({ id: workspaceId });
-      if (reopenFromHistory) {
-        for (const descriptor of snapshot.tabs) {
-          const descriptorWidget = resolveWidgetDescriptorFromTabDescriptor(descriptor);
-          if (descriptorWidget.kind !== "terminal.local") continue;
-          const scripts = parseStartupScriptsFromInput(descriptorWidget.input);
-          if (scripts.length === 0) continue;
-          pendingStartupRerunTabIdsRef.current.add(descriptor.id);
-        }
-      }
       // Hot switch: don't kill existing sessions, just change layout
       await restoreWorkspaceSnapshot(snapshot, { killExisting: false, coldBoot: false });
       await refreshWorkspaceList();
@@ -1650,12 +1472,20 @@ export function App() {
         await sleep(120);
       }
 
-      const deadline = Date.now() + 20_000;
+      const sessionByTabId = new Map<string, string>();
+      const deadline = Date.now() + 30_000;
       while (Date.now() < deadline) {
-        if (createdTabIds.every((tabId) => commandChannelsRef.current.has(tabId))) {
+        for (const tabId of createdTabIds) {
+          if (sessionByTabId.has(tabId)) continue;
+          const tab = tabsRef.current.find((entry) => entry.id === tabId);
+          if (!tab || !isExtensionTerminalWidgetTab(tab)) continue;
+          const sessionId = resolveTerminalSessionIdFromInput(tab.widget.input);
+          if (!sessionId) continue;
+          sessionByTabId.set(tabId, sessionId);
+        }
+        if (sessionByTabId.size >= createdTabIds.length) {
           break;
         }
-        // wait for ws onopen in all newly created terminal panes
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
 
@@ -1670,7 +1500,10 @@ export function App() {
 
       let launched = 0;
       for (const tabId of createdTabIds) {
-        if (sendOrQueueCommand(tabId, command)) launched += 1;
+        const sessionId = sessionByTabId.get(tabId);
+        if (!sessionId) continue;
+        const ok = await writeSessionInputBySessionId(sessionId, command).catch(() => false);
+        if (ok) launched += 1;
       }
 
       const firstCreatedTabId = createdTabIds[0];
@@ -1707,7 +1540,7 @@ export function App() {
     } finally {
       setBulkStressRunning(false);
     }
-  }, [bulkStressRunning, createLocalTerminalTab, perfRunning, sendOrQueueCommand, setActiveTabId]);
+  }, [bulkStressRunning, createLocalTerminalTab, perfRunning, setActiveTabId]);
 
   const tabsById = useMemo(() => {
     return new Map(tabs.map((tab) => [tab.id, tab]));
@@ -2021,24 +1854,19 @@ export function App() {
                       : "pointer-events-none invisible absolute inset-0 h-full min-h-0"
                   }
                 >
-                  {isLocalTerminalWidgetTab(tab) ? (
-                    <LocalTerminalWidgetPane
-                      tab={tab}
-                      isActive={tab.id === activeTabId}
-                      onTraffic={recordTraffic}
-                      onCommandChannel={updateCommandChannel}
-                      onSessionReady={handleTerminalSessionReady}
-                      onStatus={updateStatus}
-                      onWsConnected={updateWsConnected}
-                    />
-                  ) : tab.widget.kind === "extension.widget" ||
+                  {tab.widget.kind === "extension.widget" ||
                     tab.widget.kind === "file.browser" ||
                     tab.widget.kind === "note.markdown" ? (
                     <PluginWidgetPane
                       tab={tab}
                       isActive={tab.id === activeTabId}
+                      workspaceId={workspace.id}
+                      workspaceName={workspace.name}
+                      tabsSummary={tabsSummary}
+                      webviewPreloadUrl={widgetWebviewPreloadUrl}
                       onUpdateInput={updateTabInput}
                       onUpdateTitle={updateTabTitle}
+                      onActivateTab={activateTabFromWidgetApi}
                       onOpenWidget={(request) => {
                         void openWidgetTab({
                           ...request,
@@ -2073,6 +1901,7 @@ export function App() {
     );
   }, [
     activateTabInPane,
+    activateTabFromWidgetApi,
     activeTabId,
     commitTabRename,
     closePane,
@@ -2080,11 +1909,9 @@ export function App() {
     openTerminalCreateDialog,
     openWidgetTab,
     dropPreview,
-    handleTerminalSessionReady,
     leafPaneIds.length,
     moveTabToSplitPane,
     moveTab,
-    recordTraffic,
     renamingTabId,
     renamingTitle,
     setActivePane,
@@ -2094,14 +1921,15 @@ export function App() {
     setDropPreview,
     setTabContextMenu,
     splitPane,
+    tabsSummary,
     tabsById,
-    updateCommandChannel,
     updatePanelSizes,
     updateTabInput,
     updateTabTitle,
-    updateStatus,
-    updateWsConnected,
-    workspace.activePaneId
+    widgetWebviewPreloadUrl,
+    workspace.activePaneId,
+    workspace.id,
+    workspace.name
   ]);
 
   return (
@@ -2251,21 +2079,6 @@ export function App() {
       {orphanTabs.length > 0 && (
         <div className="hidden" aria-hidden="true">
           {orphanTabs.map((tab) => {
-            if (isLocalTerminalWidgetTab(tab)) {
-              return (
-                <div key={tab.id} data-orphan-tab={tab.id}>
-                  <LocalTerminalWidgetPane
-                    tab={tab}
-                    isActive={false}
-                    onTraffic={recordTraffic}
-                    onCommandChannel={updateCommandChannel}
-                    onSessionReady={handleTerminalSessionReady}
-                    onStatus={updateStatus}
-                    onWsConnected={updateWsConnected}
-                  />
-                </div>
-              );
-            }
             if (
               tab.widget.kind === "extension.widget" ||
               tab.widget.kind === "file.browser" ||
@@ -2276,8 +2089,13 @@ export function App() {
                   <PluginWidgetPane
                     tab={tab}
                     isActive={false}
+                    workspaceId={workspace.id}
+                    workspaceName={workspace.name}
+                    tabsSummary={tabsSummary}
+                    webviewPreloadUrl={widgetWebviewPreloadUrl}
                     onUpdateInput={updateTabInput}
                     onUpdateTitle={updateTabTitle}
+                    onActivateTab={activateTabFromWidgetApi}
                     onOpenWidget={(request) => {
                       void openWidgetTab({
                         ...request,
@@ -2354,7 +2172,7 @@ export function App() {
         >
           {(() => {
             const menuTarget = tabsById.get(tabContextMenu.tabId);
-            return menuTarget ? isLocalTerminalWidgetTab(menuTarget) : false;
+            return menuTarget ? isExtensionTerminalWidgetTab(menuTarget) : false;
           })() ? (
             <button
               type="button"

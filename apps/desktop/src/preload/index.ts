@@ -4,6 +4,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import {
   IPC_CHANNELS,
+  type ExtensionHostConfig,
   type SystemMetricsResponse,
   type CreateLocalSessionRequest,
   type KillSessionRequest,
@@ -50,6 +51,10 @@ const api = {
       ipcRenderer.invoke(IPC_CHANNELS.fileReadDir, payload) as Promise<FsReadDirResponse>,
     readFile: (payload: FsReadFileRequest) =>
       ipcRenderer.invoke(IPC_CHANNELS.fileReadFile, payload) as Promise<FsReadFileResponse>
+  },
+  extension: {
+    getHostConfig: () =>
+      ipcRenderer.invoke(IPC_CHANNELS.extensionGetHostConfig) as Promise<ExtensionHostConfig>
   }
 };
 

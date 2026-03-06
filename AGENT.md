@@ -28,6 +28,8 @@
 ## 3. 仓库关键路径
 
 - `apps/desktop`: Electron 主进程、IPC、workspace 存储
+- `apps/desktop/src/extensions/extension-protocol.ts`: `localterm-extension://` 资产协议
+- `apps/desktop/src/preload/widget-webview.cjs`: webview 侧 `window.widgetApi` bridge
 - `apps/renderer`: UI、pane-tree、tab 容器、widget 渲染
 - `apps/renderer/src/lib/widgets`: widget runtime state + widget drivers
 - `apps/renderer/src/components/widgets`: widget 组件（local terminal / extension widget）
@@ -108,8 +110,10 @@ pnpm verify:ci
 
 ## 10. todo
 
-当前正在完成的需求内容:
+当前阶段目标：
 
-- [x] 1
-- [ ] 2
-- [ ] 3
+- [x] 内置 file/note 迁移到 webview widget runtime
+- [x] 增加 `localterm-extension://` 协议与 `widgetApi` bridge
+- [x] 补齐 webview widget 的 e2e 覆盖与人类验收快照
+- [x] local terminal 迁移为 extension webview widget（启用 `widgetApi.terminal.*`）
+- [ ] 下一阶段：terminal webview 接入 xterm.js 与高级交互（搜索、链接、unicode、ligature）

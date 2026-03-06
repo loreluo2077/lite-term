@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Markdown Widget</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="root">
+      <section class="toolbar">
+        <button id="btn-inline" type="button">Inline Note</button>
+        <button id="btn-open-file" type="button">Open File</button>
+        <button id="btn-toggle-mode" type="button">Toggle Mode</button>
+        <span id="status" class="status"></span>
+      </section>
+      <section class="content">
+        <textarea id="editor" class="editor" spellcheck="false"></textarea>
+        <pre id="viewer" class="viewer"></pre>
+      </section>
+    </main>
+    <script src="./main.js" type="module"></script>
+  </body>
+</html>

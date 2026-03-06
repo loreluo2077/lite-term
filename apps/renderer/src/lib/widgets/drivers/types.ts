@@ -1,15 +1,11 @@
 import type {
-  CreateLocalSessionRequest,
   CreateLocalSessionResponse,
   ExtensionWidgetInput,
   SessionStatus,
   WidgetKind
 } from "@localterm/shared";
 
-export type LocalTerminalWidgetInput = Omit<CreateLocalSessionRequest, "sessionType">;
-
 export type WidgetDriverInputMap = {
-  "terminal.local": LocalTerminalWidgetInput;
   "terminal.ssh": Record<string, unknown>;
   "web.page": Record<string, unknown>;
   "web.browser": Record<string, unknown>;
@@ -22,6 +18,7 @@ export type WidgetDriverInputMap = {
 export type WidgetDriverHandle = {
   status: SessionStatus | "idle";
   session?: CreateLocalSessionResponse | undefined;
+  input?: Record<string, unknown> | undefined;
 };
 
 export interface WidgetDriver<K extends WidgetKind = WidgetKind> {

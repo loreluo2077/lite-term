@@ -7,7 +7,7 @@ import {
   workspaceSnapshotSchema
 } from "@localterm/shared";
 
-test("workspace snapshot schema accepts valid v3 terminal payload", () => {
+test("workspace snapshot schema accepts valid v3 extension terminal payload", () => {
   const parsed = workspaceSnapshotSchema.parse({
     layout: {
       schemaVersion: 3,
@@ -35,17 +35,21 @@ test("workspace snapshot schema accepts valid v3 terminal payload", () => {
         id: "tab-1",
         title: "Local 1",
         widget: {
-          kind: "terminal.local",
-          input: { cols: 120, rows: 30 }
+          kind: "extension.widget",
+          input: {
+            extensionId: "builtin.workspace",
+            widgetId: "terminal.local",
+            state: { cols: 120, rows: 30 }
+          }
         },
-        restorePolicy: "recreate"
+        restorePolicy: "manual"
       }
     ]
   });
 
   assert.equal(parsed.layout.schemaVersion, 3);
   assert.equal(parsed.tabs.length, 1);
-  assert.equal(parsed.tabs[0]?.widget.kind, "terminal.local");
+  assert.equal(parsed.tabs[0]?.widget.kind, "extension.widget");
 });
 
 test("workspace snapshot schema accepts builtin file widget payload", () => {
@@ -82,6 +86,42 @@ test("workspace snapshot schema accepts builtin file widget payload", () => {
   });
 
   assert.equal(parsed.tabs[0]?.widget.kind, "file.browser");
+});
+
+test("workspace snapshot schema rejects legacy terminal.local descriptor", () => {
+  assert.throws(
+    () =>
+      workspaceSnapshotSchema.parse({
+        layout: {
+          schemaVersion: 3,
+          id: "legacy-terminal",
+          name: "legacy-terminal",
+          activePaneId: "pane-1",
+          createdAt: 1,
+          updatedAt: 1,
+          root: {
+            id: "pane-1",
+            type: "leaf",
+            tabIds: ["tab-1"],
+            activeTabId: "tab-1"
+          }
+        },
+        tabs: [
+          {
+            id: "tab-1",
+            title: "Legacy Terminal",
+            widget: {
+              kind: "terminal.local",
+              input: {
+                cols: 120,
+                rows: 30
+              }
+            },
+            restorePolicy: "recreate"
+          }
+        ]
+      })
+  );
 });
 
 test("workspace snapshot schema accepts extension.widget payload", () => {

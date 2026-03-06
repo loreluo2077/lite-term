@@ -20,7 +20,7 @@ export class PortAllocator {
   private lastPort = MIN_PORT;
 
   async allocate(host = DEFAULTS.workerHost): Promise<number> {
-    const maxAttempts = 100;
+    const maxAttempts = MAX_PORT - MIN_PORT + 1;
     let attempts = 0;
 
     while (attempts < maxAttempts) {

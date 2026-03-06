@@ -3,18 +3,19 @@
 ## 1. 定位
 
 Session 不是通用 Tab 概念。  
-Session 仅属于 `terminal.local widget` 的运行时资源。
+Session 仅属于本地终端类 widget 的运行时资源（`extension terminal`）。
 
 即：
 
 - Workspace / Panel / Tab 负责布局与容器
 - Widget 负责内容
-- Terminal Widget 才会持有 Session（pid、port、status、ws 状态）
+- 仅本地终端类 widget 才会持有 Session（pid、port、status、ws 状态）
 
 ## 2. 当前支持范围
 
-- 当前仅实现 `terminal.local`
+- 当前本地终端能力统一为 `extension terminal`
 - 每个 terminal session 对应独立 worker 进程 + 独立 WebSocket 端口
+- `extension terminal`: builtin extension 的 `terminal.local` webview widget
 
 ## 3. 架构分层
 
@@ -31,8 +32,8 @@ Session 仅属于 `terminal.local widget` 的运行时资源。
 
 ### 3.3 渲染层
 
-- `LocalTerminalWidgetPane` 仅接收 local terminal tab（widget.kind=terminal.local）
-- 通过 `connectSessionWebSocket` 连接 worker 数据平面
+- `PluginWidgetPane` 处理 `widgetApi.terminal.*` 请求（create/write/resize/kill/list）
+- `extensions/builtin.workspace/widgets/terminal.local/main.js` 作为 `extension terminal` 入口，在 webview 内维护 WS 连接与输出
 
 ## 4. 生命周期与状态
 
@@ -47,25 +48,27 @@ Session 仅属于 `terminal.local widget` 的运行时资源。
 
 - 控制事件: `ready | exit | error`
 - 普通输出: 文本/二进制消息
+- widget 状态字段: `sessionId / port / pid / status / wsConnected`
 
 ## 5. 已实现能力
 
 ### 5.1 创建/销毁/调整尺寸
 
-- 新建 terminal widget 时创建 session
-- pane 尺寸变化、激活切换时同步 resize
-- 关闭 tab 或 kill 时释放会话
+- 新建 `extension terminal` 时创建 session（`widgetApi.terminal.create`）
+- 前端可通过 `widgetApi.terminal.resize` 调整尺寸
+- 关闭 `extension terminal` 或 kill 时释放会话（extension driver dispose + `terminal.kill`）
 
 ### 5.2 重连与保活
 
 - worker 允许断连后重连
 - workspace 热切换场景可保持会话运行态
+- `extension terminal` 的 webview 侧支持按 `sessionId` 恢复已有 session（list + reconnect）
 
 ### 5.3 Startup Scripts
 
-- terminal widget 支持多条启动脚本（delayMs）
-- 会话 ready 后执行
-- 按 `tabId:sessionId` 去重，避免重复触发
+- terminal 创建流程支持多条启动脚本（delayMs）
+- startup scripts 在 `terminal.create` 时下发到会话
+- 支持在 tab 右键菜单中编辑 startup scripts（更新到 widget state）
 
 ### 5.4 调试与性能
 
@@ -78,7 +81,7 @@ Session 仅属于 `terminal.local widget` 的运行时资源。
 
 - 主要读取 `tab.widget.kind/input`
 - 运行态主字段为 `widgetKind`
-- `session` 仅在 local terminal tab 类型上存在
+- `extension terminal` 的 session 元数据存于 `extension input.state`
 
 - workspace snapshot 仅 `schemaVersion=3` + `widget` 描述
 
@@ -87,9 +90,13 @@ Session 仅属于 `terminal.local widget` 的运行时资源。
 - 已覆盖（集成测试）:
 - `tests/integration/local-session.test.ts`
 - 覆盖创建、输出、resize、kill、延迟连接、唯一 pid/port、snapshot 更新
+- 已覆盖（E2E）:
+- `workspace + extension terminal end-to-end smoke`
+- `terminal startup scripts creation path works`
 - 执行命令:
 - `pnpm test`
 - `pnpm verify:quick`
+- `pnpm test:e2e`
 - 诊断脚本:
 - `pnpm debug:sessions`
 - `pnpm kill:orphans`
@@ -97,14 +104,16 @@ Session 仅属于 `terminal.local widget` 的运行时资源。
 
 ## 8. UI测试
 
-- 新建 terminal widget，确认状态从 `starting` 到 `ready`
+- 新建 `extension terminal`，确认状态从 `starting` 到 `ready`
 - 输入输出正常，关闭后退出
 - 热切换 workspace 后返回，终端可继续交互
 - 配置 startup scripts 后验证执行顺序与去重
+- 验证 `extension terminal` webview 显示 `ws connected/disconnected` 与 session 状态一致
 
 ## 9. 人类验收
 
-- Session 只在 terminal widget 上出现
-- 非 terminal widget 不应触发会话相关逻辑
+- Session 只在 `extension terminal` 上出现
+- 非终端类 widget 不应触发会话相关逻辑
 - 多会话并发无串线、无端口冲突
 - 热切换与冷启动恢复行为符合预期
+- 关闭 `extension terminal` 后，对应 session 应从 `session.list` 中消失
