@@ -25,9 +25,9 @@ Panel 只负责“布局与 Tab 容器能力”，不直接关心 Tab 内 Widget
 
 ### 3.1 分割与关闭
 
-- `Split H`: 水平分割当前 pane
-- `Split V`: 垂直分割当前 pane
-- `Close`: 关闭当前 pane（仅当 pane 数 > 1）
+- `... -> Split Horizontal`: 水平分割当前 pane
+- `... -> Split Vertical`: 垂直分割当前 pane
+- `... -> Close Pane`: 关闭当前 pane（仅当 pane 数 > 1）
 
 ### 3.2 尺寸调整
 
@@ -62,15 +62,12 @@ tab 支持拖拽到任意 pane，投放区域包含：
 
 - 空 pane 显示 `New Terminal In Pane` 快捷入口
 
-pane 头部快捷按钮：
+pane 头部快捷入口：
 
-- `+Term`
-- `+File`
-- `+Note`
-- `Split H/V`
-- `Close`
+- `+` 菜单：`Terminal` / `File` / `Note` / `Todo`
+- `...` 菜单：`Split Horizontal` / `Split Vertical` / `Close Pane`
 
-`+Term` 当前行为：
+`+ -> Terminal` 当前行为：
 
 - 先打开 Startup Scripts 弹窗
 - 创建 `extension terminal` tab（builtin extension 的 `terminal.local` webview widget）
@@ -101,15 +98,15 @@ pane 头部快捷按钮：
 ## 8. UI测试
 
 - 分割操作:
-- 在同一 pane 连续点击 `Split H` / `Split V`，确认布局正确
+- 在同一 pane 连续点击 `... -> Split Horizontal` / `... -> Split Vertical`，确认布局正确
 - 拖动分隔条后刷新应用，确认尺寸比例被恢复
 - terminal 创建:
-- 点击 `+Term`，确认先出现 Startup Scripts 弹窗，再创建 `extension terminal` tab
+- 点击 `+ -> Terminal`，确认先出现 Startup Scripts 弹窗，再创建 `extension terminal` tab
 - 拖拽投放:
 - 将 tab 拖到 `center`，确认仅换 pane 不新增 split
 - 将 tab 拖到 `left/right/top/bottom`，确认自动分屏并移动 tab
 - 关闭行为:
-- 当仅剩一个 pane 时，`Close` 按钮应不可用
+- 当仅剩一个 pane 时，`... -> Close Pane` 应不可用
 - 关闭有 tab 的 pane 后，tab 应迁移到兄弟 pane 且可继续操作
 
 ## 9. 人类验收

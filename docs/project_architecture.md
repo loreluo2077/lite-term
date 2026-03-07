@@ -56,7 +56,7 @@
 1. terminal webview 通过 `widgetApi.terminal.create` 请求创建会话
 2. control-plane 分配端口并启动 session-worker
 3. worker 启动 pty + WS server
-4. `extensions/builtin.workspace/widgets/terminal.local/main.js` 连接 `ws://127.0.0.1:<port>`，进入双向流
+4. `packages/widget-terminal-react` 构建产物（`extensions/builtin.workspace/widgets/terminal.local`）连接 `ws://127.0.0.1:<port>`，进入双向流
 
 ### 4.3 Workspace 持久化
 
@@ -80,7 +80,7 @@
 - 运行态主字段统一为 `widgetKind`
 - 内置 widget：`terminal.local` / `file.browser` / `note.markdown`
 - 外部 widget：`extension.widget`（`extensionId + widgetId + state`）
-- file/note 由 builtin extension 的 webview 页面提供（`extensions/builtin.workspace/widgets/*`）
+- file/note/terminal 由 builtin extension 的 React webview 页面提供（构建输出到 `extensions/builtin.workspace/widgets/*`）
 - terminal 通过 builtin extension 的 `terminal.local` webview + `widgetApi.terminal.*` 驱动
 - workspace snapshot：仅 `schemaVersion=3` + 纯 `widget` 描述
 - extension manifest：仅 `manifestVersion=2` + `widgetKinds`

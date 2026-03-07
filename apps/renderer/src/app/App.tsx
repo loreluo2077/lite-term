@@ -214,6 +214,12 @@ function resolveDropZone(clientX: number, clientY: number, rect: DOMRect): DropP
   return "center";
 }
 
+function clampMenuPosition(clientX: number, clientY: number, menuWidth: number, menuHeight: number) {
+  const x = Math.max(8, Math.min(clientX, window.innerWidth - menuWidth - 8));
+  const y = Math.max(8, Math.min(clientY, window.innerHeight - menuHeight - 8));
+  return { x, y };
+}
+
 function dropPreviewOverlayClass(zone: DropPreviewZone) {
   if (zone === "center") {
     return "absolute inset-2 rounded-md border-2 border-dashed border-sky-400 bg-sky-400/10";
@@ -523,6 +529,16 @@ export function App() {
   const [terminalStartupScriptDrafts, setTerminalStartupScriptDrafts] = useState<StartupScriptDraft[]>([]);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
+  const [paneWidgetMenu, setPaneWidgetMenu] = useState<{
+    paneId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [paneActionsMenu, setPaneActionsMenu] = useState<{
+    paneId: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const [openWorkspacePicker, setOpenWorkspacePicker] = useState(false);
   const [workspaceContextMenu, setWorkspaceContextMenu] = useState<{
     workspaceId: string;
@@ -1277,17 +1293,29 @@ export function App() {
   }, [tabContextMenu]);
 
   useEffect(() => {
-    if (!workspaceContextMenu && !plusMenuOpen && !settingsMenuOpen) return;
+    if (
+      !workspaceContextMenu &&
+      !plusMenuOpen &&
+      !settingsMenuOpen &&
+      !paneWidgetMenu &&
+      !paneActionsMenu
+    ) {
+      return;
+    }
     const onMouseDown = () => {
       setWorkspaceContextMenu(null);
       setPlusMenuOpen(false);
       setSettingsMenuOpen(false);
+      setPaneWidgetMenu(null);
+      setPaneActionsMenu(null);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setWorkspaceContextMenu(null);
         setPlusMenuOpen(false);
         setSettingsMenuOpen(false);
+        setPaneWidgetMenu(null);
+        setPaneActionsMenu(null);
       }
     };
     window.addEventListener("mousedown", onMouseDown);
@@ -1296,7 +1324,7 @@ export function App() {
       window.removeEventListener("mousedown", onMouseDown);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [plusMenuOpen, settingsMenuOpen, workspaceContextMenu]);
+  }, [paneActionsMenu, paneWidgetMenu, plusMenuOpen, settingsMenuOpen, workspaceContextMenu]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1636,10 +1664,10 @@ export function App() {
         key={node.id}
         className={
           dropPreview?.paneId === node.id
-            ? "relative grid h-full min-h-0 grid-rows-[auto_auto_1fr] gap-2 rounded-xl border border-sky-400 bg-zinc-900/40 p-2 focus:outline-none"
+            ? "relative grid h-full min-h-0 grid-rows-[auto_auto_1fr] gap-2 rounded-2xl bg-zinc-900/30 p-2 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.75)] focus:outline-none"
             : node.id === workspace.activePaneId
-              ? "relative grid h-full min-h-0 grid-rows-[auto_auto_1fr] gap-2 rounded-xl border border-amber-400/80 bg-zinc-900/40 p-2 focus:outline-none"
-              : "relative grid h-full min-h-0 grid-rows-[auto_auto_1fr] gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 p-2 focus:outline-none"
+              ? "relative grid h-full min-h-0 grid-rows-[auto_auto_1fr] gap-2 rounded-2xl bg-zinc-900/30 p-2 shadow-[inset_0_0_0_1px_rgba(251,191,36,0.55)] focus:outline-none"
+              : "relative grid h-full min-h-0 grid-rows-[auto_auto_1fr] gap-2 rounded-2xl bg-zinc-900/20 p-2 focus:outline-none"
         }
         onMouseDown={() => setActivePane({ paneId: node.id })}
         onDragOver={(event) => {
@@ -1679,83 +1707,56 @@ export function App() {
           moveTabToSplitPane(tabId, node.id, "vertical", false);
         }}
       >
-        <div className="flex items-center justify-between rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1 text-xs text-zinc-400">
-          <span>{paneTitle}</span>
-          <div className="flex items-center gap-1">
+        <div className="relative flex items-center justify-between rounded-xl bg-zinc-950/45 px-2 py-1 text-xs text-zinc-400 backdrop-blur-sm">
+          <span className="truncate">{paneTitle}</span>
+          <div className="relative flex items-center gap-1">
             <Button
               size="sm"
               variant="ghost"
-              className="h-6 px-2 text-[10px]"
-              onClick={() => {
+              aria-label="Pane Widget Menu"
+              title="Pane Widget Menu"
+              className="h-6 w-6 rounded-lg px-0 text-[12px] text-zinc-300 hover:bg-zinc-800"
+              onClick={(event) => {
+                event.stopPropagation();
                 setActivePane({ paneId: node.id });
-                openTerminalCreateDialog(node.id, true);
+                setPaneActionsMenu(null);
+                const rect = event.currentTarget.getBoundingClientRect();
+                const position = clampMenuPosition(rect.right - 152, rect.bottom + 6, 152, 132);
+                setPaneWidgetMenu((current) =>
+                  current?.paneId === node.id
+                    ? null
+                    : {
+                        paneId: node.id,
+                        ...position
+                      }
+                );
               }}
             >
-              +Term
+              +
             </Button>
             <Button
               size="sm"
               variant="ghost"
-              className="h-6 px-2 text-[10px]"
-              onClick={() => {
-                void openWidgetTab({
-                  widgetId: "file.browser",
-                  paneId: node.id
-                });
+              aria-label="Pane Actions Menu"
+              title="Pane Actions Menu"
+              className="h-6 w-6 rounded-lg px-0 text-[12px] text-zinc-300 hover:bg-zinc-800"
+              onClick={(event) => {
+                event.stopPropagation();
+                setActivePane({ paneId: node.id });
+                setPaneWidgetMenu(null);
+                const rect = event.currentTarget.getBoundingClientRect();
+                const position = clampMenuPosition(rect.right - 170, rect.bottom + 6, 170, 108);
+                setPaneActionsMenu((current) =>
+                  current?.paneId === node.id
+                    ? null
+                    : {
+                        paneId: node.id,
+                        ...position
+                      }
+                );
               }}
             >
-              +File
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 px-2 text-[10px]"
-              onClick={() => {
-                void openWidgetTab({
-                  widgetId: "note.markdown",
-                  paneId: node.id
-                });
-              }}
-            >
-              +Note
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 px-2 text-[10px]"
-              onClick={() => {
-                void openWidgetTab({
-                  widgetId: "todo.react",
-                  paneId: node.id
-                });
-              }}
-            >
-              +Todo
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 px-2 text-[10px]"
-              onClick={() => splitPane({ paneId: node.id, direction: "horizontal" })}
-            >
-              Split H
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 px-2 text-[10px]"
-              onClick={() => splitPane({ paneId: node.id, direction: "vertical" })}
-            >
-              Split V
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 px-2 text-[10px]"
-              onClick={() => closePane({ paneId: node.id })}
-              disabled={leafPaneIds.length <= 1}
-            >
-              Close
+              ...
             </Button>
           </div>
         </div>
@@ -1888,7 +1889,7 @@ export function App() {
                       }}
                     />
                   ) : (
-                    <div className="grid h-full min-h-0 place-items-center rounded-lg border border-zinc-800 bg-zinc-950 text-xs text-zinc-500">
+                    <div className="grid h-full min-h-0 place-items-center rounded-lg bg-zinc-950/60 text-xs text-zinc-500">
                       Unsupported tab kind: {tab.widget.kind}
                     </div>
                   )}
@@ -1896,7 +1897,7 @@ export function App() {
               ))}
             </div>
           ) : (
-            <div className="grid h-full min-h-0 place-items-center rounded-lg border border-dashed border-zinc-800 text-zinc-500">
+            <div className="grid h-full min-h-0 place-items-center rounded-lg bg-zinc-950/45 text-zinc-500">
               <Button
                 size="sm"
                 variant="secondary"
@@ -1946,8 +1947,8 @@ export function App() {
   ]);
 
   return (
-    <div className="grid h-screen grid-cols-[76px_1fr] gap-3 bg-zinc-950 p-3 text-zinc-100">
-      <aside className="relative flex min-h-0 flex-col items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/70 p-2">
+    <div className="grid h-screen grid-cols-[76px_1fr] gap-2 bg-zinc-950 p-2.5 text-zinc-100">
+      <aside className="relative flex min-h-0 flex-col items-center gap-2 rounded-2xl bg-zinc-900/35 p-2">
         <div className="relative">
           <Button
             variant="secondary"
@@ -1990,7 +1991,7 @@ export function App() {
             </div>
           ) : null}
         </div>
-        <div className="h-px w-10 bg-zinc-700" />
+        <div className="h-px w-10 bg-zinc-700/55" />
         <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto">
           {openWorkspaceEntries.map((entry) => {
             const active = entry.id === workspace.id;
@@ -2011,8 +2012,8 @@ export function App() {
                 }}
                 className={
                   active
-                    ? "h-11 w-11 rounded-2xl border border-amber-400 bg-zinc-800 text-xs font-semibold text-zinc-100"
-                    : "h-11 w-11 rounded-2xl border border-zinc-700 bg-zinc-800/70 text-xs font-semibold text-zinc-300 hover:border-zinc-500"
+                    ? "h-11 w-11 rounded-2xl bg-zinc-800 text-xs font-semibold text-zinc-100 ring-1 ring-amber-300/70"
+                    : "h-11 w-11 rounded-2xl bg-zinc-800/70 text-xs font-semibold text-zinc-300 hover:bg-zinc-800"
                 }
               >
                 {workspaceBadge(entry.name)}
@@ -2075,7 +2076,7 @@ export function App() {
         </div>
       </aside>
 
-      <main className={hasActiveWorkspace ? "min-h-0 rounded-xl border border-zinc-800 bg-zinc-900/40 p-2" : "min-h-0 p-2"}>
+      <main className={hasActiveWorkspace ? "min-h-0 rounded-2xl bg-zinc-900/25 p-2" : "min-h-0 p-2"}>
         {hasActiveWorkspace ? (
           renderPaneNode(workspace.root)
         ) : (
@@ -2123,6 +2124,112 @@ export function App() {
           })}
         </div>
       )}
+
+      {paneWidgetMenu ? (
+        <div
+          className="fixed z-50 min-w-[152px] rounded-lg border border-zinc-700 bg-zinc-900/95 p-1 text-xs shadow-2xl backdrop-blur"
+          style={{ left: paneWidgetMenu.x, top: paneWidgetMenu.y }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="w-full rounded px-2 py-1.5 text-left text-zinc-200 hover:bg-zinc-800"
+            onClick={() => {
+              const paneId = paneWidgetMenu.paneId;
+              setPaneWidgetMenu(null);
+              setActivePane({ paneId });
+              openTerminalCreateDialog(paneId, true);
+            }}
+          >
+            Terminal
+          </button>
+          <button
+            type="button"
+            className="w-full rounded px-2 py-1.5 text-left text-zinc-200 hover:bg-zinc-800"
+            onClick={() => {
+              const paneId = paneWidgetMenu.paneId;
+              setPaneWidgetMenu(null);
+              void openWidgetTab({
+                widgetId: "file.browser",
+                paneId
+              });
+            }}
+          >
+            File
+          </button>
+          <button
+            type="button"
+            className="w-full rounded px-2 py-1.5 text-left text-zinc-200 hover:bg-zinc-800"
+            onClick={() => {
+              const paneId = paneWidgetMenu.paneId;
+              setPaneWidgetMenu(null);
+              void openWidgetTab({
+                widgetId: "note.markdown",
+                paneId
+              });
+            }}
+          >
+            Note
+          </button>
+          <button
+            type="button"
+            className="w-full rounded px-2 py-1.5 text-left text-zinc-200 hover:bg-zinc-800"
+            onClick={() => {
+              const paneId = paneWidgetMenu.paneId;
+              setPaneWidgetMenu(null);
+              void openWidgetTab({
+                widgetId: "todo.react",
+                paneId
+              });
+            }}
+          >
+            Todo
+          </button>
+        </div>
+      ) : null}
+
+      {paneActionsMenu ? (
+        <div
+          className="fixed z-50 min-w-[170px] rounded-lg border border-zinc-700 bg-zinc-900/95 p-1 text-xs shadow-2xl backdrop-blur"
+          style={{ left: paneActionsMenu.x, top: paneActionsMenu.y }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="w-full rounded px-2 py-1.5 text-left text-zinc-200 hover:bg-zinc-800"
+            onClick={() => {
+              const paneId = paneActionsMenu.paneId;
+              setPaneActionsMenu(null);
+              splitPane({ paneId, direction: "horizontal" });
+            }}
+          >
+            Split Horizontal
+          </button>
+          <button
+            type="button"
+            className="w-full rounded px-2 py-1.5 text-left text-zinc-200 hover:bg-zinc-800"
+            onClick={() => {
+              const paneId = paneActionsMenu.paneId;
+              setPaneActionsMenu(null);
+              splitPane({ paneId, direction: "vertical" });
+            }}
+          >
+            Split Vertical
+          </button>
+          <button
+            type="button"
+            className="w-full rounded px-2 py-1.5 text-left text-red-300 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => {
+              const paneId = paneActionsMenu.paneId;
+              setPaneActionsMenu(null);
+              closePane({ paneId });
+            }}
+            disabled={leafPaneIds.length <= 1}
+          >
+            Close Pane
+          </button>
+        </div>
+      ) : null}
 
       {workspaceContextMenu ? (
         <div

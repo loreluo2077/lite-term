@@ -102,11 +102,39 @@ async function createWorkspaceFromMenu(pageHandle, testInfo) {
   });
 }
 
+function paneWidgetMenuButton(pageHandle, paneIndex = 0) {
+  return pageHandle.getByRole("button", { name: "Pane Widget Menu" }).nth(paneIndex);
+}
+
+function paneActionsMenuButton(pageHandle, paneIndex = 0) {
+  return pageHandle.getByRole("button", { name: "Pane Actions Menu" }).nth(paneIndex);
+}
+
+async function openPaneWidgetMenu(pageHandle, paneIndex = 0) {
+  const button = paneWidgetMenuButton(pageHandle, paneIndex);
+  await expect(button).toBeVisible({ timeout: 30_000 });
+  await button.click();
+}
+
+async function openPaneActionsMenu(pageHandle, paneIndex = 0) {
+  const button = paneActionsMenuButton(pageHandle, paneIndex);
+  await expect(button).toBeVisible({ timeout: 30_000 });
+  await button.click();
+}
+
+async function clickPaneWidgetMenuItem(pageHandle, paneIndex, itemName) {
+  await openPaneWidgetMenu(pageHandle, paneIndex);
+  await pageHandle.getByRole("button", { name: exactTextPattern(itemName) }).first().click();
+}
+
+async function clickPaneActionsMenuItem(pageHandle, paneIndex, itemName) {
+  await openPaneActionsMenu(pageHandle, paneIndex);
+  await pageHandle.getByRole("button", { name: exactTextPattern(itemName) }).first().click();
+}
+
 async function createTerminalWidgetInPane(pageHandle, testInfo, paneIndex = 0) {
   await runHumanStep(pageHandle, testInfo, `create-terminal-pane-${paneIndex + 1}`, async () => {
-    const addTerminalButton = pageHandle.getByRole("button", { name: "+Term" }).nth(paneIndex);
-    await expect(addTerminalButton).toBeVisible({ timeout: 30_000 });
-    await addTerminalButton.click();
+    await clickPaneWidgetMenuItem(pageHandle, paneIndex, "Terminal");
     await expect(pageHandle.getByRole("heading", { name: "Terminal Startup Scripts" })).toBeVisible();
     await pageHandle.getByRole("button", { name: "Create Without Scripts" }).click();
     const terminalStatusLine = pageHandle.getByText(/port \d+ · (starting|ready)/).first();
@@ -124,12 +152,12 @@ async function setupTwoPaneWorkspaceWithMarkdownTab(pageHandle, testInfo) {
   await createWorkspaceFromMenu(pageHandle, testInfo);
 
   await runHumanStep(pageHandle, testInfo, "split-pane-horizontal", async () => {
-    await pageHandle.getByRole("button", { name: "Split H" }).first().click();
-    await expect(pageHandle.getByRole("button", { name: "+Term" })).toHaveCount(2);
+    await clickPaneActionsMenuItem(pageHandle, 0, "Split Horizontal");
+    await expect(pageHandle.getByRole("button", { name: "Pane Widget Menu" })).toHaveCount(2);
   });
 
   await runHumanStep(pageHandle, testInfo, "create-markdown-tab", async () => {
-    await pageHandle.getByRole("button", { name: "+Note" }).first().click();
+    await clickPaneWidgetMenuItem(pageHandle, 0, "Note");
     await expect(pageHandle.getByRole("tab", { name: "Markdown" }).first()).toBeVisible();
   });
 
@@ -330,25 +358,23 @@ test("panel split + widget creation + pane close flow", async ({}, testInfo) => 
   await createWorkspaceFromMenu(page, testInfo);
 
   await runHumanStep(page, testInfo, "create-note-widget", async () => {
-    await page.getByRole("button", { name: "+Note" }).first().click();
+    await clickPaneWidgetMenuItem(page, 0, "Note");
     await expect(page.getByText(/widget builtin\.workspace:(note\.markdown|widget\.markdown)/)).toBeVisible();
   });
 
   await runHumanStep(page, testInfo, "split-horizontal", async () => {
-    await page.getByRole("button", { name: "Split H" }).first().click();
-    await expect(page.getByRole("button", { name: "+Term" })).toHaveCount(2);
+    await clickPaneActionsMenuItem(page, 0, "Split Horizontal");
+    await expect(page.getByRole("button", { name: "Pane Widget Menu" })).toHaveCount(2);
   });
 
   await runHumanStep(page, testInfo, "create-file-widget", async () => {
-    await page.getByRole("button", { name: "+File" }).nth(1).click();
+    await clickPaneWidgetMenuItem(page, 1, "File");
     await expect(page.getByText(/widget builtin\.workspace:file\.browser/).first()).toBeVisible();
   });
 
   await runHumanStep(page, testInfo, "close-second-pane", async () => {
-    const paneCloseButtons = page.getByRole("button", { name: /^Close$/ });
-    await expect(paneCloseButtons).toHaveCount(2);
-    await paneCloseButtons.nth(1).click();
-    await expect(page.getByRole("button", { name: /^Close$/ })).toHaveCount(1);
+    await clickPaneActionsMenuItem(page, 1, "Close Pane");
+    await expect(page.getByRole("button", { name: "Pane Widget Menu" })).toHaveCount(1);
   });
 });
 
@@ -356,7 +382,7 @@ test("builtin webview widgets load runtime and protocol urls", async ({}, testIn
   await createWorkspaceFromMenu(page, testInfo);
 
   await runHumanStep(page, testInfo, "open-note-widget-webview", async () => {
-    await page.getByRole("button", { name: "+Note" }).first().click();
+    await clickPaneWidgetMenuItem(page, 0, "Note");
     await expect(page.getByRole("tab", { name: "Markdown" }).first()).toBeVisible();
     await waitForVisibleWidgetRuntimeReady(page);
     const webviewSources = await page.locator("webview").evaluateAll((nodes) =>
@@ -372,7 +398,7 @@ test("builtin webview widgets load runtime and protocol urls", async ({}, testIn
   });
 
   await runHumanStep(page, testInfo, "open-file-widget-webview", async () => {
-    await page.getByRole("button", { name: "+File" }).first().click();
+    await clickPaneWidgetMenuItem(page, 0, "File");
     await expect(page.getByRole("tab", { name: "Files" }).first()).toBeVisible();
     await waitForVisibleWidgetRuntimeReady(page);
     const webviewSources = await page.locator("webview").evaluateAll((nodes) =>
@@ -392,7 +418,7 @@ test("terminal startup scripts creation path works", async ({}, testInfo) => {
   await createWorkspaceFromMenu(page, testInfo);
 
   await runHumanStep(page, testInfo, "create-terminal-with-startup-script", async () => {
-    await page.getByRole("button", { name: "+Term" }).first().click();
+    await clickPaneWidgetMenuItem(page, 0, "Terminal");
     await expect(page.getByRole("heading", { name: "Terminal Startup Scripts" })).toBeVisible();
     await page.getByRole("button", { name: "+ Add Startup Script" }).click();
     await page.locator('input[type="number"]').first().fill("50");
@@ -430,7 +456,7 @@ test("workspace close to history then reopen from picker", async ({}, testInfo) 
     await expect(page.getByRole("heading", { name: "Open Workspace" })).toBeVisible();
     await page.getByRole("button", { name: new RegExp(escapeRegExp(activeWorkspaceName)) }).first().click();
     await expect(page.getByText("No active workspace")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "+Term" }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Pane Widget Menu" }).first()).toBeVisible();
   });
 });
 
@@ -470,7 +496,7 @@ test("tab drag-drop center moves tab without creating extra split", async ({}, t
   const { sourceTab, targetPane } = await setupTwoPaneWorkspaceWithMarkdownTab(page, testInfo);
   await runHumanStep(page, testInfo, "drag-tab-center", async () => {
     await dragTabToZone(sourceTab, targetPane, "center");
-    await expect(page.getByRole("button", { name: "+Term" })).toHaveCount(2);
+    await expect(page.getByRole("button", { name: "Pane Widget Menu" })).toHaveCount(2);
     await expect(page.getByRole("tab", { name: "Markdown" }).first()).toBeVisible();
   });
 });
@@ -480,7 +506,7 @@ for (const zone of ["left", "right", "top", "bottom"]) {
     const { sourceTab, targetPane } = await setupTwoPaneWorkspaceWithMarkdownTab(page, testInfo);
     await runHumanStep(page, testInfo, `drag-tab-${zone}`, async () => {
       await dragTabToZone(sourceTab, targetPane, zone);
-      await expect(page.getByRole("button", { name: "+Term" })).toHaveCount(3);
+      await expect(page.getByRole("button", { name: "Pane Widget Menu" })).toHaveCount(3);
       await expect(page.getByRole("tab", { name: "Markdown" }).first()).toBeVisible();
     });
   });

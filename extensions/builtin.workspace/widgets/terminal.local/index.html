@@ -3,42 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Local Terminal</title>
-    <link rel="stylesheet" href="./style.css" />
+    <title>Extension Terminal Widget</title>
+    <script type="module" crossorigin src="./assets/index-RFsnQ1--.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-B03QhFuL.css">
   </head>
   <body>
-    <main class="shell">
-      <header class="toolbar">
-        <div class="group">
-          <label>
-            Cols
-            <input id="cols" type="number" min="20" max="400" step="1" value="120" />
-          </label>
-          <label>
-            Rows
-            <input id="rows" type="number" min="5" max="200" step="1" value="30" />
-          </label>
-          <button id="btn-resize" type="button">Resize</button>
-        </div>
-        <div class="group">
-          <button id="btn-reconnect" type="button">Reconnect</button>
-          <button id="btn-kill" type="button" class="danger">Kill</button>
-        </div>
-      </header>
-
-      <section id="output" class="output" aria-live="polite"></section>
-
-      <form id="input-form" class="input-row">
-        <input id="input" type="text" autocomplete="off" placeholder="Type command and press Enter" />
-        <button type="submit">Send</button>
-      </form>
-
-      <footer class="status">
-        <span id="status">idle</span>
-        <span id="session">session: -</span>
-      </footer>
-    </main>
-
-    <script type="module" src="./main.js"></script>
+    <div id="root"></div>
   </body>
 </html>

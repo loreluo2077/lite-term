@@ -1,6 +1,6 @@
-# React Webview Widget Template (Todo)
+# React + Tailwind Webview Widget Template (Todo)
 
-This package is a template for building a React widget that runs inside the webview runtime.
+This package is a template for building a React + Tailwind widget that runs inside the webview runtime.
 
 ## Structure
 

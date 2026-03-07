@@ -36,6 +36,10 @@
     "acceptance:auto": "pnpm verify:quick && pnpm --filter @localterm/renderer build && pnpm debug:sessions",
     "verify:ci": "pnpm verify:quick && pnpm test:e2e",
     "build:widget:todo": "pnpm --filter @localterm/widget-todo-react build",
+    "build:widget:terminal": "pnpm --filter @localterm/widget-terminal-react build",
+    "build:widget:file": "pnpm --filter @localterm/widget-file-react build",
+    "build:widget:note": "pnpm --filter @localterm/widget-note-react build",
+    "build:widgets:builtin": "pnpm build:widget:terminal && pnpm build:widget:file && pnpm build:widget:note && pnpm build:widget:todo",
     "debug:sessions": "tsx scripts/debug-sessions.ts",
     "kill:orphans": "tsx scripts/kill-orphans.ts",
     "perf:stress": "tsx scripts/perf-session-stress.ts"

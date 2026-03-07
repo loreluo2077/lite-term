@@ -37,6 +37,9 @@
 - `packages/control-plane/src/widgets/local-terminal`: local terminal widget 控制平面
 - `packages/widget-terminal/src/base`: session adapter 基础抽象
 - `packages/widget-terminal/src/local-terminal`: local terminal widget adapter + worker 入口
+- `packages/widget-terminal-react`: `terminal.local` webview（React + Tailwind）
+- `packages/widget-file-react`: `file.browser` webview（React + Tailwind）
+- `packages/widget-note-react`: `note.markdown` webview（React + Tailwind）
 - `packages/shared/src/schemas/base|widget|plugin|workspace`: 协议分层
 - `tests/integration`: 关键集成测试
 
@@ -97,6 +100,7 @@ pnpm dev
 pnpm typecheck
 pnpm test
 pnpm test:e2e
+pnpm build:widgets:builtin
 pnpm verify:quick
 pnpm verify:ci
 ```
@@ -116,4 +120,5 @@ pnpm verify:ci
 - [x] 增加 `localterm-extension://` 协议与 `widgetApi` bridge
 - [x] 补齐 webview widget 的 e2e 覆盖与人类验收快照
 - [x] local terminal 迁移为 extension webview widget（启用 `widgetApi.terminal.*`）
-- [ ] 下一阶段：terminal webview 接入 xterm.js 与高级交互（搜索、链接、unicode、ligature）
+- [x] terminal webview 接入 xterm.js（ANSI 渲染、自动 fit、选择复制、右键粘贴/清空）
+- [ ] 下一阶段：xterm 高级能力（搜索、unicode、ligature、GPU 渲染降级策略）

@@ -33,7 +33,7 @@ Session 仅属于本地终端类 widget 的运行时资源（`extension terminal
 ### 3.3 渲染层
 
 - `PluginWidgetPane` 处理 `widgetApi.terminal.*` 请求（create/write/resize/kill/list）
-- `extensions/builtin.workspace/widgets/terminal.local/main.js` 作为 `extension terminal` 入口，在 webview 内维护 WS 连接与输出
+- `packages/widget-terminal-react` 构建到 `extensions/builtin.workspace/widgets/terminal.local`，作为 `extension terminal` webview 入口
 
 ## 4. 生命周期与状态
 
@@ -64,13 +64,20 @@ Session 仅属于本地终端类 widget 的运行时资源（`extension terminal
 - workspace 热切换场景可保持会话运行态
 - `extension terminal` 的 webview 侧支持按 `sessionId` 恢复已有 session（list + reconnect）
 
-### 5.3 Startup Scripts
+### 5.3 终端渲染与交互（xterm.js）
+
+- `terminal.local` 使用 xterm.js 渲染完整 ANSI 输出，不再以纯文本降级显示
+- 启用 fit + resize 同步：容器尺寸变化后自动调用 `widgetApi.terminal.resize`
+- 支持选中文本后浮动复制按钮
+- 支持右键菜单：`Paste` / `Clear`
+
+### 5.4 Startup Scripts
 
 - terminal 创建流程支持多条启动脚本（delayMs）
 - startup scripts 在 `terminal.create` 时下发到会话
 - 支持在 tab 右键菜单中编辑 startup scripts（更新到 widget state）
 
-### 5.4 调试与性能
+### 5.5 调试与性能
 
 - Perf Panel: 输出吞吐、内存采样
 - Debug Sessions: control-plane registry 快照
