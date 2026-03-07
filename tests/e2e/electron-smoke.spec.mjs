@@ -137,7 +137,7 @@ async function createTerminalWidgetInPane(pageHandle, testInfo, paneIndex = 0) {
     await clickPaneWidgetMenuItem(pageHandle, paneIndex, "Terminal");
     await expect(pageHandle.getByRole("heading", { name: "Terminal Startup Scripts" })).toBeVisible();
     await pageHandle.getByRole("button", { name: "Create Without Scripts" }).click();
-    const terminalStatusLine = pageHandle.getByText(/port \d+ · (starting|ready)/).first();
+    const terminalStatusLine = pageHandle.getByText(/Terminal\s*\d+\s*\[(starting|ready)\]/).first();
     await expect(terminalStatusLine).toBeVisible({ timeout: 30_000 });
   });
 }
@@ -426,7 +426,7 @@ test("terminal startup scripts creation path works", async ({}, testInfo) => {
     await page.getByRole("button", { name: "Create Terminal" }).click();
 
     await expect(page.getByRole("heading", { name: "Terminal Startup Scripts" })).toHaveCount(0);
-    const terminalStatusLine = page.getByText(/port \d+ · (starting|ready)/).first();
+    const terminalStatusLine = page.getByText(/Terminal\s*\d+\s*\[(starting|ready)\]/).first();
     await expect(terminalStatusLine).toBeVisible({ timeout: 30_000 });
   });
 });

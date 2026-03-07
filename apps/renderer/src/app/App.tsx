@@ -97,6 +97,15 @@ type TabContextMenuState = {
   y: number;
 } | null;
 
+type TabInfoDialogState = {
+  tabTitle: string;
+  sessionId: string;
+  port: number;
+  pid: number;
+  status: string;
+  wsConnected: boolean;
+} | null;
+
 type PendingTerminalCreation = {
   paneId: string;
   activate: boolean;
@@ -335,6 +344,23 @@ function resolveTerminalSessionIdFromInput(input: Record<string, unknown>) {
   return typeof state.sessionId === "string" ? state.sessionId : "";
 }
 
+function resolveTerminalMetaFromInput(input: Record<string, unknown>) {
+  const state = resolveTerminalStateFromInput(input);
+  return {
+    sessionId: typeof state.sessionId === "string" ? state.sessionId : "",
+    port:
+      typeof state.port === "number" && Number.isFinite(state.port)
+        ? Math.max(0, Math.floor(state.port))
+        : 0,
+    pid:
+      typeof state.pid === "number" && Number.isFinite(state.pid)
+        ? Math.max(0, Math.floor(state.pid))
+        : 0,
+    status: typeof state.status === "string" ? state.status : "idle",
+    wsConnected: state.wsConnected === true
+  };
+}
+
 async function writeSessionInputBySessionId(sessionId: string, data: string) {
   const listed = await window.localtermApi.session.listSessions();
   const matched = listed.sessions.find((entry) => entry.sessionId === sessionId);
@@ -529,6 +555,7 @@ export function App() {
   const [terminalStartupScriptDrafts, setTerminalStartupScriptDrafts] = useState<StartupScriptDraft[]>([]);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
+  const [workspaceSidebarExpanded, setWorkspaceSidebarExpanded] = useState(false);
   const [paneWidgetMenu, setPaneWidgetMenu] = useState<{
     paneId: string;
     x: number;
@@ -554,6 +581,7 @@ export function App() {
   const [renamingTitle, setRenamingTitle] = useState("");
   const [dropPreview, setDropPreview] = useState<DropPreview>(null);
   const [tabContextMenu, setTabContextMenu] = useState<TabContextMenuState>(null);
+  const [tabInfoDialog, setTabInfoDialog] = useState<TabInfoDialogState>(null);
   const tabCounterRef = useRef(0);
   const tabsRef = useRef<WidgetTabRecord[]>([]);
   const restoringWorkspaceRef = useRef(false);
@@ -1657,17 +1685,15 @@ export function App() {
     const paneActiveTabId = paneTabs.some((tab) => tab.id === node.activeTabId)
       ? node.activeTabId
       : paneTabs[0]?.id;
-    const paneTitle = node.id === workspace.activePaneId ? `${node.id} (active)` : node.id;
-
     return (
       <section
         key={node.id}
         className={
           dropPreview?.paneId === node.id
-            ? "relative grid h-full min-h-0 grid-rows-[auto_auto_1fr] gap-2 rounded-2xl bg-zinc-900/30 p-2 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.75)] focus:outline-none"
+            ? "relative grid h-full min-h-0 grid-rows-[auto_1fr] gap-2 rounded-2xl bg-zinc-900/30 p-2 shadow-[inset_0_0_0_1px_rgba(56,189,248,0.75)] focus:outline-none"
             : node.id === workspace.activePaneId
-              ? "relative grid h-full min-h-0 grid-rows-[auto_auto_1fr] gap-2 rounded-2xl bg-zinc-900/30 p-2 shadow-[inset_0_0_0_1px_rgba(251,191,36,0.55)] focus:outline-none"
-              : "relative grid h-full min-h-0 grid-rows-[auto_auto_1fr] gap-2 rounded-2xl bg-zinc-900/20 p-2 focus:outline-none"
+              ? "relative grid h-full min-h-0 grid-rows-[auto_1fr] gap-2 rounded-2xl bg-zinc-900/26 p-2 shadow-[inset_0_0_0_1px_rgba(244,244,245,0.12)] focus:outline-none"
+              : "relative grid h-full min-h-0 grid-rows-[auto_1fr] gap-2 rounded-2xl bg-zinc-900/20 p-2 focus:outline-none"
         }
         onMouseDown={() => setActivePane({ paneId: node.id })}
         onDragOver={(event) => {
@@ -1707,60 +1733,6 @@ export function App() {
           moveTabToSplitPane(tabId, node.id, "vertical", false);
         }}
       >
-        <div className="relative flex items-center justify-between rounded-xl bg-zinc-950/45 px-2 py-1 text-xs text-zinc-400 backdrop-blur-sm">
-          <span className="truncate">{paneTitle}</span>
-          <div className="relative flex items-center gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              aria-label="Pane Widget Menu"
-              title="Pane Widget Menu"
-              className="h-6 w-6 rounded-lg px-0 text-[12px] text-zinc-300 hover:bg-zinc-800"
-              onClick={(event) => {
-                event.stopPropagation();
-                setActivePane({ paneId: node.id });
-                setPaneActionsMenu(null);
-                const rect = event.currentTarget.getBoundingClientRect();
-                const position = clampMenuPosition(rect.right - 152, rect.bottom + 6, 152, 132);
-                setPaneWidgetMenu((current) =>
-                  current?.paneId === node.id
-                    ? null
-                    : {
-                        paneId: node.id,
-                        ...position
-                      }
-                );
-              }}
-            >
-              +
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              aria-label="Pane Actions Menu"
-              title="Pane Actions Menu"
-              className="h-6 w-6 rounded-lg px-0 text-[12px] text-zinc-300 hover:bg-zinc-800"
-              onClick={(event) => {
-                event.stopPropagation();
-                setActivePane({ paneId: node.id });
-                setPaneWidgetMenu(null);
-                const rect = event.currentTarget.getBoundingClientRect();
-                const position = clampMenuPosition(rect.right - 170, rect.bottom + 6, 170, 108);
-                setPaneActionsMenu((current) =>
-                  current?.paneId === node.id
-                    ? null
-                    : {
-                        paneId: node.id,
-                        ...position
-                      }
-                );
-              }}
-            >
-              ...
-            </Button>
-          </div>
-        </div>
-
         {dropPreview?.paneId === node.id ? (
           <div className="pointer-events-none absolute inset-0 z-20">
             <div className={dropPreviewOverlayClass(dropPreview.zone)} />
@@ -1777,83 +1749,135 @@ export function App() {
           }}
           className="min-h-0"
         >
-          <TabsList className="w-full justify-start overflow-x-auto">
-            {paneTabs.length === 0 ? (
-              <TabsTrigger value={`__none-${node.id}`} disabled>
-                Empty Pane
-              </TabsTrigger>
-            ) : (
-              paneTabs.map((tab) => (
-                <div
-                  key={tab.id}
-                  draggable
-                  onDragStart={(event) => {
-                    event.dataTransfer.setData("text/localterm-tab-id", tab.id);
-                    event.dataTransfer.effectAllowed = "move";
-                  }}
-                  onDragEnd={() => {
-                    setDropPreview(null);
-                  }}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    setTabContextMenu({
-                      tabId: tab.id,
-                      paneId: node.id,
-                      x: event.clientX,
-                      y: event.clientY
-                    });
-                  }}
-                  className="flex items-center gap-1 rounded-md border border-transparent px-1"
-                >
-                  <TabsTrigger value={tab.id} className="max-w-[180px]">
-                    {renamingTabId === tab.id ? (
-                      <input
-                        className="h-6 w-[120px] rounded border border-zinc-700 bg-zinc-950 px-1 text-xs text-zinc-100 outline-none"
-                        value={renamingTitle}
-                        autoFocus
-                        onChange={(event) => setRenamingTitle(event.target.value)}
-                        onClick={(event) => event.stopPropagation()}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            commitTabRename();
-                          }
-                          if (event.key === "Escape") {
-                            setRenamingTabId(null);
-                          }
-                        }}
-                        onBlur={commitTabRename}
-                      />
-                    ) : (
-                      <span
-                        className="truncate"
-                        onDoubleClick={(event) => {
-                          event.stopPropagation();
-                          setRenamingTabId(tab.id);
-                          setRenamingTitle(tab.title);
-                        }}
-                      >
-                        {tab.title}
-                      </span>
-                    )}
-                    <span className="ml-1 text-[10px] text-zinc-400">[{tab.status}]</span>
-                  </TabsTrigger>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-zinc-400 hover:text-zinc-100"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void closeTab(tab.id);
+          <div className="flex items-center gap-2">
+            <TabsList className="min-w-0 flex-1 justify-start overflow-x-auto">
+              {paneTabs.length === 0 ? (
+                <TabsTrigger value={`__none-${node.id}`} disabled>
+                  Empty Pane
+                </TabsTrigger>
+              ) : (
+                paneTabs.map((tab) => (
+                  <div
+                    key={tab.id}
+                    draggable
+                    onDragStart={(event) => {
+                      event.dataTransfer.setData("text/localterm-tab-id", tab.id);
+                      event.dataTransfer.effectAllowed = "move";
                     }}
-                    aria-label={`Close ${tab.title}`}
+                    onDragEnd={() => {
+                      setDropPreview(null);
+                    }}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setTabContextMenu({
+                        tabId: tab.id,
+                        paneId: node.id,
+                        x: event.clientX,
+                        y: event.clientY
+                      });
+                    }}
+                    className="flex items-center gap-1 rounded-md border border-transparent px-1"
                   >
-                    ×
-                  </Button>
-                </div>
-              ))
-            )}
-          </TabsList>
+                    <TabsTrigger value={tab.id} className="max-w-[180px]">
+                      {renamingTabId === tab.id ? (
+                        <input
+                          className="h-6 w-[120px] rounded border border-zinc-700 bg-zinc-950 px-1 text-xs text-zinc-100 outline-none"
+                          value={renamingTitle}
+                          autoFocus
+                          onChange={(event) => setRenamingTitle(event.target.value)}
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              commitTabRename();
+                            }
+                            if (event.key === "Escape") {
+                              setRenamingTabId(null);
+                            }
+                          }}
+                          onBlur={commitTabRename}
+                        />
+                      ) : (
+                        <span
+                          className="truncate"
+                          onDoubleClick={(event) => {
+                            event.stopPropagation();
+                            setRenamingTabId(tab.id);
+                            setRenamingTitle(tab.title);
+                          }}
+                        >
+                          {tab.title}
+                        </span>
+                      )}
+                      <span className="ml-1 text-[10px] text-zinc-400">[{tab.status}]</span>
+                    </TabsTrigger>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-zinc-400 hover:text-zinc-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void closeTab(tab.id);
+                      }}
+                      aria-label={`Close ${tab.title}`}
+                    >
+                      ×
+                    </Button>
+                  </div>
+                ))
+              )}
+            </TabsList>
+            <div className="relative flex shrink-0 items-center gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label="Pane Widget Menu"
+                title="Pane Widget Menu"
+                className="h-6 w-6 rounded-lg px-0 text-[12px] text-zinc-300 hover:bg-zinc-800"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setActivePane({ paneId: node.id });
+                  setPaneActionsMenu(null);
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  const position = clampMenuPosition(rect.right - 152, rect.bottom + 6, 152, 132);
+                  setPaneWidgetMenu((current) =>
+                    current?.paneId === node.id
+                      ? null
+                      : {
+                          paneId: node.id,
+                          ...position
+                        }
+                  );
+                }}
+              >
+                +
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label="Pane Actions Menu"
+                title="Pane Actions Menu"
+                className="h-6 w-6 rounded-lg px-0 text-[12px] text-zinc-300 hover:bg-zinc-800"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setActivePane({ paneId: node.id });
+                  setPaneWidgetMenu(null);
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  const position = clampMenuPosition(rect.right - 170, rect.bottom + 6, 170, 108);
+                  setPaneActionsMenu((current) =>
+                    current?.paneId === node.id
+                      ? null
+                      : {
+                          paneId: node.id,
+                          ...position
+                        }
+                  );
+                }}
+              >
+                ...
+              </Button>
+            </div>
+          </div>
         </Tabs>
 
         <div className="min-h-0">
@@ -1923,7 +1947,7 @@ export function App() {
     openTerminalCreateDialog,
     openWidgetTab,
     dropPreview,
-    leafPaneIds.length,
+    leafPaneIds,
     moveTabToSplitPane,
     moveTab,
     renamingTabId,
@@ -1947,52 +1971,83 @@ export function App() {
   ]);
 
   return (
-    <div className="grid h-screen grid-cols-[76px_1fr] gap-2 bg-zinc-950 p-2.5 text-zinc-100">
-      <aside className="relative flex min-h-0 flex-col items-center gap-2 rounded-2xl bg-zinc-900/35 p-2">
-        <div className="relative">
+    <div
+      className={`grid h-screen ${
+        workspaceSidebarExpanded ? "grid-cols-[240px_1fr]" : "grid-cols-[76px_1fr]"
+      } gap-2 bg-zinc-950 p-2.5 text-zinc-100`}
+    >
+      <aside
+        className={`relative flex min-h-0 flex-col gap-2 rounded-2xl bg-zinc-900/35 p-2 ${
+          workspaceSidebarExpanded ? "items-stretch" : "items-center"
+        }`}
+      >
+        <div
+          className={`${
+            workspaceSidebarExpanded ? "flex items-center justify-between gap-2" : "flex flex-col items-center gap-2"
+          }`}
+        >
+          <div className="relative">
+            <Button
+              variant="secondary"
+              size="icon"
+              className="h-11 w-11 rounded-2xl"
+              onClick={(event) => {
+                event.stopPropagation();
+                setPlusMenuOpen((open) => !open);
+              }}
+              disabled={workspaceActionBusy}
+              title="Workspace Menu"
+            >
+              +
+            </Button>
+            {plusMenuOpen ? (
+              <div
+                className="absolute left-full top-0 z-40 ml-2 min-w-[180px] rounded-md border border-zinc-700 bg-zinc-900 p-1 shadow-2xl"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="w-full rounded px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    void createEmptyWorkspace();
+                  }}
+                >
+                  New Workspace
+                </button>
+                <button
+                  type="button"
+                  className="w-full rounded px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+                  onClick={() => {
+                    setPlusMenuOpen(false);
+                    setOpenWorkspacePicker(true);
+                  }}
+                >
+                  Open Saved Workspace
+                </button>
+              </div>
+            ) : null}
+          </div>
+
           <Button
             variant="secondary"
             size="icon"
-            className="h-11 w-11 rounded-2xl"
+            className={workspaceSidebarExpanded ? "h-11 w-11 rounded-2xl" : "h-10 w-10 rounded-xl"}
             onClick={(event) => {
               event.stopPropagation();
-              setPlusMenuOpen((open) => !open);
+              setWorkspaceSidebarExpanded((prev) => !prev);
             }}
-            disabled={workspaceActionBusy}
-            title="Workspace Menu"
+            title={workspaceSidebarExpanded ? "Collapse Sidebar" : "Expand Sidebar"}
           >
-            +
+            {workspaceSidebarExpanded ? "«" : "»"}
           </Button>
-          {plusMenuOpen ? (
-            <div
-              className="absolute left-12 top-0 z-40 min-w-[180px] rounded-md border border-zinc-700 bg-zinc-900 p-1 shadow-2xl"
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              <button
-                type="button"
-                className="w-full rounded px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
-                onClick={() => {
-                  setPlusMenuOpen(false);
-                  void createEmptyWorkspace();
-                }}
-              >
-                New Workspace
-              </button>
-              <button
-                type="button"
-                className="w-full rounded px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
-                onClick={() => {
-                  setPlusMenuOpen(false);
-                  setOpenWorkspacePicker(true);
-                }}
-              >
-                Open Saved Workspace
-              </button>
-            </div>
-          ) : null}
         </div>
-        <div className="h-px w-10 bg-zinc-700/55" />
-        <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto">
+        <div className={`h-px bg-zinc-700/55 ${workspaceSidebarExpanded ? "w-full" : "w-10"}`} />
+        <div
+          className={`flex min-h-0 w-full flex-1 flex-col gap-2 overflow-y-auto ${
+            workspaceSidebarExpanded ? "items-stretch" : "items-center"
+          }`}
+        >
           {openWorkspaceEntries.map((entry) => {
             const active = entry.id === workspace.id;
             return (
@@ -2011,12 +2066,25 @@ export function App() {
                   });
                 }}
                 className={
-                  active
-                    ? "h-11 w-11 rounded-2xl bg-zinc-800 text-xs font-semibold text-zinc-100 ring-1 ring-amber-300/70"
-                    : "h-11 w-11 rounded-2xl bg-zinc-800/70 text-xs font-semibold text-zinc-300 hover:bg-zinc-800"
+                  workspaceSidebarExpanded
+                    ? active
+                      ? "flex h-11 w-full items-center gap-2 rounded-xl bg-zinc-800 px-3 text-sm text-zinc-100 ring-1 ring-amber-300/70"
+                      : "flex h-11 w-full items-center gap-2 rounded-xl bg-zinc-800/70 px-3 text-sm text-zinc-300 hover:bg-zinc-800"
+                    : active
+                      ? "h-11 w-11 rounded-2xl bg-zinc-800 text-xs font-semibold text-zinc-100 ring-1 ring-amber-300/70"
+                      : "h-11 w-11 rounded-2xl bg-zinc-800/70 text-xs font-semibold text-zinc-300 hover:bg-zinc-800"
                 }
               >
-                {workspaceBadge(entry.name)}
+                {workspaceSidebarExpanded ? (
+                  <>
+                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-zinc-700/80 text-[11px] font-semibold">
+                      {workspaceBadge(entry.name)}
+                    </span>
+                    <span className="truncate">{entry.name}</span>
+                  </>
+                ) : (
+                  workspaceBadge(entry.name)
+                )}
               </button>
             );
           })}
@@ -2024,19 +2092,19 @@ export function App() {
         <div className="relative mt-auto">
           <Button
             variant="secondary"
-            size="icon"
-            className="h-10 w-10 rounded-xl"
+            size={workspaceSidebarExpanded ? "default" : "icon"}
+            className={workspaceSidebarExpanded ? "h-10 w-full justify-start rounded-xl px-3" : "h-10 w-10 rounded-xl"}
             onClick={(event) => {
               event.stopPropagation();
               setSettingsMenuOpen((open) => !open);
             }}
             title="Settings"
           >
-            ⚙
+            {workspaceSidebarExpanded ? "⚙ Settings" : "⚙"}
           </Button>
           {settingsMenuOpen ? (
             <div
-              className="absolute bottom-0 left-12 z-40 min-w-[180px] rounded-md border border-zinc-700 bg-zinc-900 p-1 shadow-2xl"
+              className="absolute bottom-0 left-full z-40 ml-2 min-w-[180px] rounded-md border border-zinc-700 bg-zinc-900 p-1 shadow-2xl"
               onMouseDown={(event) => event.stopPropagation()}
             >
               <button
@@ -2189,46 +2257,56 @@ export function App() {
       ) : null}
 
       {paneActionsMenu ? (
-        <div
-          className="fixed z-50 min-w-[170px] rounded-lg border border-zinc-700 bg-zinc-900/95 p-1 text-xs shadow-2xl backdrop-blur"
-          style={{ left: paneActionsMenu.x, top: paneActionsMenu.y }}
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="w-full rounded px-2 py-1.5 text-left text-zinc-200 hover:bg-zinc-800"
-            onClick={() => {
-              const paneId = paneActionsMenu.paneId;
-              setPaneActionsMenu(null);
-              splitPane({ paneId, direction: "horizontal" });
-            }}
-          >
-            Split Horizontal
-          </button>
-          <button
-            type="button"
-            className="w-full rounded px-2 py-1.5 text-left text-zinc-200 hover:bg-zinc-800"
-            onClick={() => {
-              const paneId = paneActionsMenu.paneId;
-              setPaneActionsMenu(null);
-              splitPane({ paneId, direction: "vertical" });
-            }}
-          >
-            Split Vertical
-          </button>
-          <button
-            type="button"
-            className="w-full rounded px-2 py-1.5 text-left text-red-300 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
-            onClick={() => {
-              const paneId = paneActionsMenu.paneId;
-              setPaneActionsMenu(null);
-              closePane({ paneId });
-            }}
-            disabled={leafPaneIds.length <= 1}
-          >
-            Close Pane
-          </button>
-        </div>
+        (() => {
+          const paneIndex = leafPaneIds.indexOf(paneActionsMenu.paneId);
+          const paneLabel = paneIndex >= 0 ? `Panel ${paneIndex + 1}` : paneActionsMenu.paneId;
+
+          return (
+            <div
+              className="fixed z-50 min-w-[170px] rounded-lg border border-zinc-700 bg-zinc-900/95 p-1 text-xs shadow-2xl backdrop-blur"
+              style={{ left: paneActionsMenu.x, top: paneActionsMenu.y }}
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="mb-1 rounded border border-zinc-700 bg-zinc-950/60 px-2 py-1.5 text-zinc-400">
+                {paneLabel}
+              </div>
+              <button
+                type="button"
+                className="w-full rounded px-2 py-1.5 text-left text-zinc-200 hover:bg-zinc-800"
+                onClick={() => {
+                  const paneId = paneActionsMenu.paneId;
+                  setPaneActionsMenu(null);
+                  splitPane({ paneId, direction: "horizontal" });
+                }}
+              >
+                Split Horizontal
+              </button>
+              <button
+                type="button"
+                className="w-full rounded px-2 py-1.5 text-left text-zinc-200 hover:bg-zinc-800"
+                onClick={() => {
+                  const paneId = paneActionsMenu.paneId;
+                  setPaneActionsMenu(null);
+                  splitPane({ paneId, direction: "vertical" });
+                }}
+              >
+                Split Vertical
+              </button>
+              <button
+                type="button"
+                className="w-full rounded px-2 py-1.5 text-left text-red-300 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => {
+                  const paneId = paneActionsMenu.paneId;
+                  setPaneActionsMenu(null);
+                  closePane({ paneId });
+                }}
+                disabled={leafPaneIds.length <= 1}
+              >
+                Close Pane
+              </button>
+            </div>
+          );
+        })()
       ) : null}
 
       {workspaceContextMenu ? (
@@ -2285,62 +2363,136 @@ export function App() {
       ) : null}
 
       {tabContextMenu ? (
-        <div
-          className="fixed z-50 min-w-[180px] rounded-md border border-zinc-700 bg-zinc-900 p-1 shadow-2xl"
-          style={{ left: tabContextMenu.x, top: tabContextMenu.y }}
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          {(() => {
-            const menuTarget = tabsById.get(tabContextMenu.tabId);
-            return menuTarget ? isExtensionTerminalWidgetTab(menuTarget) : false;
-          })() ? (
-            <button
-              type="button"
-              className="w-full rounded px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
-              onClick={() => {
-                openTerminalStartupScriptsEditor(tabContextMenu.tabId);
-                setTabContextMenu(null);
-              }}
+        (() => {
+          const menuTarget = tabsById.get(tabContextMenu.tabId);
+          const isTerminal = menuTarget ? isExtensionTerminalWidgetTab(menuTarget) : false;
+
+          return (
+            <div
+              className="fixed z-50 min-w-[220px] rounded-md border border-zinc-700 bg-zinc-900 p-1 shadow-2xl"
+              style={{ left: tabContextMenu.x, top: tabContextMenu.y }}
+              onMouseDown={(event) => event.stopPropagation()}
             >
-              Startup Scripts
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className="w-full rounded px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
-            onClick={() => {
-              const tab = tabsById.get(tabContextMenu.tabId);
-              if (tab) {
-                setRenamingTabId(tab.id);
-                setRenamingTitle(tab.title);
-              }
-              setTabContextMenu(null);
-            }}
-          >
-            Rename
-          </button>
-          <button
-            type="button"
-            className="w-full rounded px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
-            onClick={() => {
-              moveTabToSplitPane(tabContextMenu.tabId, tabContextMenu.paneId, "horizontal", false);
-              setTabContextMenu(null);
-            }}
-          >
-            Move To New Split
-          </button>
-          <button
-            type="button"
-            className="w-full rounded px-3 py-2 text-left text-sm text-red-300 hover:bg-zinc-800"
-            onClick={() => {
-              void closeTab(tabContextMenu.tabId);
-              setTabContextMenu(null);
-            }}
-          >
-            Close
-          </button>
-        </div>
+              <div className="mb-1 flex items-center justify-end px-1">
+                <button
+                  type="button"
+                  className="h-6 w-6 rounded text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                  aria-label="Close Tab Menu"
+                  onClick={() => setTabContextMenu(null)}
+                >
+                  ×
+                </button>
+              </div>
+              {isTerminal ? (
+                <button
+                  type="button"
+                  className="w-full rounded px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+                  onClick={() => {
+                    if (menuTarget && isExtensionTerminalWidgetTab(menuTarget)) {
+                      const meta = resolveTerminalMetaFromInput(menuTarget.widget.input);
+                      setTabInfoDialog({
+                        tabTitle: menuTarget.title,
+                        ...meta
+                      });
+                    }
+                    setTabContextMenu(null);
+                  }}
+                >
+                  Info
+                </button>
+              ) : null}
+              {isTerminal ? (
+                <button
+                  type="button"
+                  className="w-full rounded px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+                  onClick={() => {
+                    openTerminalStartupScriptsEditor(tabContextMenu.tabId);
+                    setTabContextMenu(null);
+                  }}
+                >
+                  Startup Scripts
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="w-full rounded px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+                onClick={() => {
+                  const tab = tabsById.get(tabContextMenu.tabId);
+                  if (tab) {
+                    setRenamingTabId(tab.id);
+                    setRenamingTitle(tab.title);
+                  }
+                  setTabContextMenu(null);
+                }}
+              >
+                Rename
+              </button>
+              <button
+                type="button"
+                className="w-full rounded px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+                onClick={() => {
+                  moveTabToSplitPane(tabContextMenu.tabId, tabContextMenu.paneId, "horizontal", false);
+                  setTabContextMenu(null);
+                }}
+              >
+                Move To New Split
+              </button>
+              <button
+                type="button"
+                className="w-full rounded px-3 py-2 text-left text-sm text-red-300 hover:bg-zinc-800"
+                onClick={() => {
+                  void closeTab(tabContextMenu.tabId);
+                  setTabContextMenu(null);
+                }}
+              >
+                Close
+              </button>
+            </div>
+          );
+        })()
       ) : null}
+
+      <Dialog
+        open={tabInfoDialog !== null}
+        onOpenChange={(open) => {
+          if (!open) setTabInfoDialog(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Terminal Info</DialogTitle>
+            <DialogDescription>{tabInfoDialog?.tabTitle || "Terminal"}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-sm text-zinc-200">
+            <div className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2">
+              <div className="text-xs text-zinc-400">Session ID</div>
+              <div className="mt-1 break-all font-mono">{tabInfoDialog?.sessionId || "-"}</div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2">
+                <div className="text-xs text-zinc-400">Port</div>
+                <div className="mt-1 font-mono">{tabInfoDialog?.port || "-"}</div>
+              </div>
+              <div className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2">
+                <div className="text-xs text-zinc-400">PID</div>
+                <div className="mt-1 font-mono">{tabInfoDialog?.pid || "-"}</div>
+              </div>
+            </div>
+            <div className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2">
+              <div className="text-xs text-zinc-400">Status</div>
+              <div className="mt-1">
+                {tabInfoDialog?.status || "idle"}
+                {tabInfoDialog ? ` · ${tabInfoDialog.wsConnected ? "ws connected" : "ws disconnected"}` : ""}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTabInfoDialog(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={openWorkspacePicker} onOpenChange={setOpenWorkspacePicker}>
         <DialogContent>

@@ -64,10 +64,9 @@ function clampContextPosition(clientX: number, clientY: number) {
 
 export default function App() {
   const api = useMemo(() => getWidgetApi(), []);
-  const [state, setState] = useState<TerminalWidgetState>(DEFAULT_STATE);
+  const [, setState] = useState<TerminalWidgetState>(DEFAULT_STATE);
   const stateRef = useRef<TerminalWidgetState>(DEFAULT_STATE);
   const [hasSelection, setHasSelection] = useState(false);
-  const [statusTip, setStatusTip] = useState("");
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
 
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -152,9 +151,9 @@ export default function App() {
       });
       await patchState({ cols, rows });
     } catch (error) {
-      setStatusTip(`resize failed: ${errorMessage(error)}`);
+      appendSystemLine(`[resize failed] ${errorMessage(error)}`);
     }
-  }, [api, patchState]);
+  }, [api, appendSystemLine, patchState]);
 
   const scheduleTerminalSizeSync = useCallback(() => {
     if (resizeTimerRef.current != null) {
@@ -344,34 +343,6 @@ export default function App() {
     resizeObserverRef.current = observer;
   }, [appendSystemLine, scheduleTerminalSizeSync, writeInput]);
 
-  const handleReconnect = useCallback(async () => {
-    const snapshot = stateRef.current;
-    try {
-      if (snapshot.port > 0) {
-        connectWs(snapshot.port);
-      } else {
-        await ensureSession();
-      }
-      terminalRef.current?.focus();
-    } catch (error) {
-      setStatusTip(`reconnect failed: ${errorMessage(error)}`);
-    }
-  }, [connectWs, ensureSession]);
-
-  const handleKill = useCallback(async () => {
-    const sessionId = stateRef.current.sessionId;
-    if (!sessionId) return;
-
-    try {
-      await api.terminal.kill({ sessionId });
-      closeWs();
-      await patchState({ status: "exited", wsConnected: false });
-      appendSystemLine("[killed]");
-    } catch (error) {
-      setStatusTip(`kill failed: ${errorMessage(error)}`);
-    }
-  }, [api, appendSystemLine, closeWs, patchState]);
-
   const handleCopySelection = useCallback(async () => {
     const terminal = terminalRef.current;
     const selectedText = terminal?.getSelection() ?? "";
@@ -381,12 +352,11 @@ export default function App() {
       await navigator.clipboard.writeText(selectedText);
       terminal?.clearSelection();
       setHasSelection(false);
-      setStatusTip("已复制选中内容");
       terminal?.focus();
     } catch (error) {
-      setStatusTip(`copy failed: ${errorMessage(error)}`);
+      appendSystemLine(`[copy failed] ${errorMessage(error)}`);
     }
-  }, []);
+  }, [appendSystemLine]);
 
   const handlePasteFromClipboard = useCallback(async () => {
     setContextMenu(null);
@@ -396,9 +366,9 @@ export default function App() {
       await writeInput(text);
       terminalRef.current?.focus();
     } catch (error) {
-      setStatusTip(`粘贴失败: ${errorMessage(error)}`);
+      appendSystemLine(`[paste failed] ${errorMessage(error)}`);
     }
-  }, [writeInput]);
+  }, [appendSystemLine, writeInput]);
 
   const handleClearTerminal = useCallback(() => {
     setContextMenu(null);
@@ -479,40 +449,9 @@ export default function App() {
     };
   }, [contextMenu]);
 
-  const wsText = state.wsConnected ? "ws connected" : "ws disconnected";
-  const sessionText = state.sessionId
-    ? `${state.sessionId.slice(0, 8)} · port ${state.port || "-"} · pid ${state.pid || "-"}`
-    : "session: -";
-  const statusText = `${state.status} · ${wsText}`;
-
   return (
-    <main className="relative grid h-full min-h-0 grid-rows-[auto_1fr_auto] gap-2 bg-[radial-gradient(circle_at_top_left,rgba(30,58,138,0.28),rgba(2,6,23,1)_60%)] p-2 text-zinc-100">
-      <header className="flex items-center justify-between gap-2 rounded-md border border-blue-900/50 bg-slate-950/75 px-3 py-2 text-xs">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="rounded border border-blue-500/30 bg-blue-500/15 px-1.5 py-0.5 text-[11px] text-blue-200">
-            extension terminal
-          </span>
-          <span className="truncate text-slate-300">{sessionText}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void handleReconnect()}
-            className="h-7 rounded border border-slate-700 bg-slate-900 px-2.5 text-[11px] text-slate-100 hover:border-sky-500"
-          >
-            Reconnect
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleKill()}
-            className="h-7 rounded border border-red-900 bg-red-950 px-2.5 text-[11px] text-red-100 hover:border-red-700"
-          >
-            Kill
-          </button>
-        </div>
-      </header>
-
-      <section className="relative min-h-0 overflow-hidden rounded-md border border-slate-800 bg-[#04070f] shadow-[0_0_0_1px_rgba(96,165,250,0.08),0_10px_30px_rgba(2,6,23,0.45)]">
+    <main className="relative h-full min-h-0 bg-[radial-gradient(circle_at_top_left,rgba(30,58,138,0.22),rgba(2,6,23,1)_60%)] p-1.5 text-zinc-100">
+      <section className="relative h-full min-h-0 overflow-hidden rounded-md bg-[#04070f] shadow-[0_8px_24px_rgba(2,6,23,0.4)]">
         <div
           ref={hostRef}
           className="terminal-host h-full w-full"
@@ -534,11 +473,6 @@ export default function App() {
           </button>
         ) : null}
       </section>
-
-      <footer className="flex items-center justify-between gap-2 rounded-md border border-slate-800 bg-slate-950/75 px-3 py-1.5 text-[11px] text-slate-300">
-        <span>{statusText}</span>
-        <span className="truncate text-slate-400">{statusTip || "右键菜单：粘贴 / 清空"}</span>
-      </footer>
 
       {contextMenu ? (
         <div

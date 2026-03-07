@@ -501,26 +501,34 @@ export function PluginWidgetPane({
 
   if (!webviewPreloadUrl) {
     return (
-      <div className="grid h-full place-items-center rounded-lg border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-300">
+      <div className="grid h-full place-items-center rounded-lg bg-zinc-950/70 p-4 text-sm text-zinc-300">
         Preparing widget runtime...
+      </div>
+    );
+  }
+
+  if (terminalMeta) {
+    return (
+      <div className="h-full min-h-0 overflow-hidden rounded-lg bg-zinc-950/55">
+        <webview
+          ref={(element) => {
+            webviewRef.current = element as unknown as WebviewLikeElement;
+          }}
+          src={webviewSrc}
+          preload={webviewPreloadUrl}
+          className="h-full w-full"
+        />
       </div>
     );
   }
 
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_1fr] gap-2">
-      <div className="flex items-center justify-between rounded-md border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-xs text-zinc-400">
+      <div className="flex items-center justify-between rounded-md bg-zinc-950/50 px-3 py-1.5 text-[11px] text-zinc-500">
         <span className="truncate">
-          {terminalMeta
-            ? `${tab.title} · ${terminalMeta.port > 0 ? `port ${terminalMeta.port}` : "no session"} · ${terminalMeta.status}`
-            : `${tab.title} · widget ${widgetInput.extensionId}:${widgetInput.widgetId}`}
+          {`${tab.title} · widget ${widgetInput.extensionId}:${widgetInput.widgetId}`}
         </span>
         <div className="flex items-center gap-2">
-          {terminalMeta ? (
-            <span className={terminalMeta.wsConnected ? "text-emerald-400" : "text-zinc-500"}>
-              {terminalMeta.wsConnected ? "ws connected" : "ws disconnected"}
-            </span>
-          ) : null}
           <span
             data-testid="widget-runtime-status"
             className={isWebviewReady ? "text-emerald-400" : "text-amber-400"}
@@ -530,7 +538,7 @@ export function PluginWidgetPane({
           <Button
             size="sm"
             variant="ghost"
-            className="h-6 px-2 text-[10px]"
+            className="h-6 px-2 text-[10px] text-zinc-400 hover:text-zinc-100"
             onClick={() => {
               const nextTitle = window.prompt("Tab title", tab.title)?.trim();
               if (!nextTitle) return;
@@ -541,7 +549,7 @@ export function PluginWidgetPane({
           </Button>
         </div>
       </div>
-      <div className="min-h-0 overflow-hidden rounded-md border border-zinc-800 bg-zinc-950">
+      <div className="min-h-0 overflow-hidden rounded-md bg-zinc-950/55">
         <webview
           ref={(element) => {
             webviewRef.current = element as unknown as WebviewLikeElement;
