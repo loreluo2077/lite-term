@@ -82,3 +82,16 @@ pnpm verify:quick
 pnpm test:e2e
 pnpm verify:ci
 ```
+
+## 7. 本地应用构建与运行
+
+离线本地运行（不依赖 renderer dev server）：
+
+```bash
+pnpm build:app:local
+pnpm start:app:local
+```
+
+说明：
+- `build:app:local` 会构建 builtin widgets + renderer + desktop dist。
+- `start:app:local` 直接运行 Electron desktop 产物，适合本机日常使用和验收。

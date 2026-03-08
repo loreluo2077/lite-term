@@ -25,6 +25,9 @@
   "scripts": {
     "dev": "concurrently -k -n renderer,desktop -c cyan,green \"pnpm --filter @localterm/renderer dev\" \"pnpm --filter @localterm/desktop dev\"",
     "restart:dev": "bash scripts/restart-port.sh 5173 pnpm dev",
+    "build:desktop": "node scripts/build-desktop.mjs",
+    "build:app:local": "pnpm build:widgets:builtin && pnpm --filter @localterm/renderer build && pnpm build:desktop",
+    "start:app:local": "NODE_OPTIONS=--import=tsx LOCALTERM_RENDERER_URL= electron ./apps/desktop/dist/main/index.js",
     "typecheck": "pnpm -r --if-present typecheck",
     "lint": "echo \"TODO: wire workspace lint\"",
     "test": "pnpm test:integration",

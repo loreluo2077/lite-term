@@ -59,6 +59,17 @@ pnpm build:widget:note
 pnpm build:widgets:builtin
 ```
 
+本地可运行构建（不依赖 dev server）：
+
+```bash
+pnpm build:app:local
+pnpm start:app:local
+```
+
+说明：
+- `build:app:local` 会依次构建 builtin widgets、renderer、desktop 进程代码。
+- `start:app:local` 会直接启动 `apps/desktop/dist/main/index.js`，页面使用 `apps/renderer/dist`。
+
 ## Packages 分层（base / widget / extension）
 
 - Base 能力：
