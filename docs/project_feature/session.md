@@ -97,7 +97,7 @@ Session 仅属于本地终端类 widget 的运行时资源（`extension terminal
 
 - 已覆盖（集成测试）:
 - `tests/integration/local-session.test.ts`
-- 覆盖创建、输出、resize、kill、延迟连接、唯一 pid/port、snapshot 更新
+- 覆盖创建、输出、resize、kill、延迟连接、重连不回放、重连持续流式输出、唯一 pid/port、snapshot 更新
 - 已覆盖（E2E）:
 - `workspace + extension terminal end-to-end smoke`
 - `terminal startup scripts creation path works`

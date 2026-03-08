@@ -1739,6 +1739,7 @@ export function App() {
     parkedTabHost,
     tabViewportVersion,
     tabs,
+    workspaceSidebarExpanded,
     workspace.root
   ]);
 

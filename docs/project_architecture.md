@@ -92,6 +92,7 @@
 - 一会话一 worker 隔离
 - widget host 全局常驻（按 `tabId` 挂载），workspace/tab 切换仅做显示切换
 - workspace 切换不 reparent webview host，避免切换抖动与会话重建
+- websocket 重连仅恢复连接，不回放历史输出
 - session 生命周期仅挂在 extension terminal widget
 
 ## 7. 扩展点
