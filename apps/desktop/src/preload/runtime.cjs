@@ -18,6 +18,10 @@ const api = {
     delete: (payload) => ipcRenderer.invoke("workspace:delete", payload),
     getDefault: () => ipcRenderer.invoke("workspace:getDefault")
   },
+  widgetRegistry: {
+    save: (payload) => ipcRenderer.invoke("widgetRegistry:save", payload),
+    load: () => ipcRenderer.invoke("widgetRegistry:load")
+  },
   file: {
     pickDirectory: () => ipcRenderer.invoke("file:pickDirectory"),
     pickFile: (payload) => ipcRenderer.invoke("file:pickFile", payload ?? {}),

@@ -13,6 +13,7 @@ import {
   type WorkspaceGetDefaultResponse,
   type WorkspaceListResponse,
   type WorkspaceSnapshot,
+  type WidgetRegistrySnapshot,
   type FsPickDirectoryResponse,
   type FsPickFileRequest,
   type FsPickFileResponse,
@@ -42,6 +43,11 @@ const api = {
     close: (payload: WorkspaceIdRequest) => ipcRenderer.invoke(IPC_CHANNELS.workspaceClose, payload),
     delete: (payload: WorkspaceIdRequest) => ipcRenderer.invoke(IPC_CHANNELS.workspaceDelete, payload),
     getDefault: () => ipcRenderer.invoke(IPC_CHANNELS.workspaceGetDefault) as Promise<WorkspaceGetDefaultResponse>
+  },
+  widgetRegistry: {
+    save: (payload: WidgetRegistrySnapshot) =>
+      ipcRenderer.invoke(IPC_CHANNELS.widgetRegistrySave, payload),
+    load: () => ipcRenderer.invoke(IPC_CHANNELS.widgetRegistryLoad) as Promise<WidgetRegistrySnapshot>
   },
   file: {
     pickDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.filePickDirectory) as Promise<FsPickDirectoryResponse>,

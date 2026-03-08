@@ -2,10 +2,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   normalizeWorkspaceSnapshot,
+  normalizeWidgetTabDescriptor,
+  widgetRegistrySnapshotSchema,
   workspaceGetDefaultResponseSchema,
   workspaceIndexSchema,
   workspaceListResponseSchema,
   workspaceSnapshotSchema,
+  type WidgetRegistrySnapshot,
   type WorkspaceGetDefaultResponse,
   type WorkspaceListResponse
 } from "@localterm/shared";
@@ -13,6 +16,7 @@ import {
 const STORE_ROOT_DIR = "workspace-store";
 const SNAPSHOT_DIR = "workspaces";
 const INDEX_FILE = "index.json";
+const WIDGET_REGISTRY_FILE = "widget-registry.json";
 const BUILTIN_WORKSPACE_EXTENSION_ID = "builtin.workspace";
 
 function toRecord(value: unknown): Record<string, unknown> | null {
@@ -84,6 +88,10 @@ function getIndexPath(userDataDir: string) {
 function getSnapshotPath(userDataDir: string, workspaceId: string) {
   ensureSafeWorkspaceId(workspaceId);
   return path.join(getSnapshotRoot(userDataDir), `${workspaceId}.json`);
+}
+
+function getWidgetRegistryPath(userDataDir: string) {
+  return path.join(getStoreRoot(userDataDir), WIDGET_REGISTRY_FILE);
 }
 
 async function writeFileAtomic(filePath: string, content: string) {
@@ -223,4 +231,37 @@ export async function getDefaultWorkspaceSnapshot(userDataDir: string): Promise<
     }
   }
   return workspaceGetDefaultResponseSchema.parse({ workspace: null });
+}
+
+export async function saveWidgetRegistry(userDataDir: string, payload: unknown) {
+  const parsed = widgetRegistrySnapshotSchema.parse(payload);
+  const normalized: WidgetRegistrySnapshot = {
+    widgets: parsed.widgets.map((widget) => normalizeWidgetTabDescriptor(widget))
+  };
+  await ensureStore(userDataDir);
+  await writeFileAtomic(
+    getWidgetRegistryPath(userDataDir),
+    JSON.stringify(normalized, null, 2)
+  );
+  return { ok: true } as const;
+}
+
+export async function loadWidgetRegistry(userDataDir: string): Promise<WidgetRegistrySnapshot> {
+  await ensureStore(userDataDir);
+  const filePath = getWidgetRegistryPath(userDataDir);
+  try {
+    const raw = await fs.readFile(filePath, "utf8");
+    const parsed = widgetRegistrySnapshotSchema.parse(JSON.parse(raw));
+    return {
+      widgets: parsed.widgets.map((widget) => normalizeWidgetTabDescriptor(widget))
+    };
+  } catch (error) {
+    const nodeError = error as NodeJS.ErrnoException;
+    if (nodeError?.code === "ENOENT") {
+      return {
+        widgets: []
+      };
+    }
+    throw error;
+  }
 }

@@ -3,7 +3,8 @@
  * Phase 1 will keep this intentionally minimal: tabs + terminal panes only.
  */
 import { useAtom } from "jotai";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   activeWidgetTabIdAtom as activeTabIdAtom,
   isExtensionTerminalWidgetTab,
@@ -251,6 +252,7 @@ const DEFAULT_TERMINAL_SIZE = {
 };
 
 const WORKSPACE_AUTOSAVE_DEBOUNCE_MS = 500;
+const WIDGET_REGISTRY_AUTOSAVE_DEBOUNCE_MS = 250;
 
 function makeStartupScriptId() {
   return globalThis.crypto?.randomUUID?.() ?? `script-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -502,6 +504,22 @@ function toPersistedTabDescriptors(records: WidgetTabRecord[]): WidgetTabDescrip
   });
 }
 
+function hydrateWidgetRecordFromDescriptor(descriptor: WidgetTabDescriptor): WidgetTabRecord {
+  const widget = resolveWidgetDescriptorFromTabDescriptor(descriptor);
+  return {
+    id: descriptor.id,
+    widgetKind: widget.kind,
+    widget,
+    title: descriptor.customTitle ?? descriptor.title,
+    input: widget.input,
+    status:
+      widget.kind === "extension.widget" && isBuiltinTerminalExtensionInput(widget.input)
+        ? "starting"
+        : "idle",
+    wsConnected: false
+  };
+}
+
 function resolveInitialActiveTabId(root: PaneNode, activePaneId: string): string {
   const preferredPane = getLeafPaneById(root, activePaneId);
   if (preferredPane) {
@@ -582,8 +600,15 @@ export function App() {
   const [dropPreview, setDropPreview] = useState<DropPreview>(null);
   const [tabContextMenu, setTabContextMenu] = useState<TabContextMenuState>(null);
   const [tabInfoDialog, setTabInfoDialog] = useState<TabInfoDialogState>(null);
+  const [parkedTabHost, setParkedTabHost] = useState<HTMLDivElement | null>(null);
+  const tabMountHostsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const paneContentHostsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const paneContentRefCallbacksRef = useRef<Map<string, (host: HTMLDivElement | null) => void>>(new Map());
+  const [paneContentHostVersion, setPaneContentHostVersion] = useState(0);
+  const [tabViewportVersion, setTabViewportVersion] = useState(0);
   const tabCounterRef = useRef(0);
   const tabsRef = useRef<WidgetTabRecord[]>([]);
+  const workspaceSnapshotCacheRef = useRef<Map<string, WorkspaceSnapshot>>(new Map());
   const restoringWorkspaceRef = useRef(false);
   const widgetTemplates = useMemo(() => listWidgetTemplates(), []);
   const leafPaneIds = useMemo(() => listLeafPaneIds(workspace.root), [workspace.root]);
@@ -610,10 +635,6 @@ export function App() {
   const closedWorkspaceEntries = useMemo(
     () => workspaceList.workspaces.filter((entry) => entry.isClosed),
     [workspaceList]
-  );
-  const persistedTabsDigest = useMemo(
-    () => JSON.stringify(toPersistedTabDescriptors(tabs)),
-    [tabs]
   );
   const terminalStartupScriptsTargetTab = useMemo(() => {
     if (!terminalStartupScriptsTargetTabId) return null;
@@ -978,7 +999,6 @@ export function App() {
 
   const buildWorkspaceSnapshot = useCallback(
     (overrides?: Partial<WorkspaceSnapshot["layout"]>): WorkspaceSnapshot => {
-      const tabsForPersistence = JSON.parse(persistedTabsDigest) as WorkspaceSnapshot["tabs"];
       const layout = {
         ...(workspace as WorkspaceSnapshot["layout"]),
         ...overrides,
@@ -987,10 +1007,10 @@ export function App() {
       } as WorkspaceSnapshot["layout"];
       return {
         layout,
-        tabs: tabsForPersistence
+        tabs: []
       } as WorkspaceSnapshot;
     },
-    [persistedTabsDigest, workspace]
+    [workspace]
   );
 
   const disposeTabs = useCallback(async (records: WidgetTabRecord[]) => {
@@ -1019,77 +1039,19 @@ export function App() {
 
       if (!snapshot) {
         setWorkspace(createDefaultWorkspaceLayout());
-        setTabs([]);
+        if (options.killExisting) {
+          setTabs([]);
+        }
         setActiveTabId("");
         return;
       }
 
+      workspaceSnapshotCacheRef.current.set(snapshot.layout.id, snapshot);
       setWorkspace(snapshot.layout);
-
-      // Hot switch mode: merge layout with existing tabs
-      if (!options.coldBoot) {
-        // Update active tab to match new layout, but keep all existing tabs alive
-        setActiveTabId(resolveInitialActiveTabId(snapshot.layout.root, snapshot.layout.activePaneId));
-
-        // Merge tabs: keep existing running tabs, add any new tabs from snapshot
-        setTabs((currentTabs) => {
-          const currentTabsById = new Map(currentTabs.map(t => [t.id, t]));
-          const newTabs: WidgetTabRecord[] = [];
-
-          // Add all tabs from new layout (preserve running state if already exists)
-          for (const descriptor of snapshot.tabs) {
-            const existing = currentTabsById.get(descriptor.id);
-            if (existing) {
-              // Keep existing tab with its live session
-              newTabs.push(existing);
-              currentTabsById.delete(descriptor.id);
-            } else {
-              // Add new tab from snapshot (will need to create session if restorePolicy=recreate)
-              const widget = resolveWidgetDescriptorFromTabDescriptor(descriptor);
-              newTabs.push({
-                id: descriptor.id,
-                widgetKind: widget.kind,
-                widget,
-                title: descriptor.customTitle ?? descriptor.title,
-                input: widget.input,
-                status:
-                  widget.kind === "extension.widget" && isBuiltinTerminalExtensionInput(widget.input)
-                    ? "starting"
-                    : "idle",
-                wsConnected: false
-              });
-            }
-          }
-
-          // Keep any orphaned tabs from current workspace (not in new layout) - they stay alive in background
-          for (const orphanedTab of currentTabsById.values()) {
-            newTabs.push(orphanedTab);
-          }
-
-          return newTabs;
-        });
-        return;
-      }
-
-      // Cold boot mode: restore tabs according to restorePolicy
-      const restoredTabs: WidgetTabRecord[] = snapshot.tabs.map((descriptor) => {
-        const widget = resolveWidgetDescriptorFromTabDescriptor(descriptor);
-        return {
-          id: descriptor.id,
-          widgetKind: widget.kind,
-          widget,
-          title: descriptor.customTitle ?? descriptor.title,
-          input: widget.input,
-          status:
-            widget.kind === "extension.widget" && isBuiltinTerminalExtensionInput(widget.input)
-              ? "starting"
-              : "idle",
-          wsConnected: false
-        };
-      });
-      tabCounterRef.current = Math.max(tabCounterRef.current, restoredTabs.length);
-      setTabs(restoredTabs);
       setActiveTabId(resolveInitialActiveTabId(snapshot.layout.root, snapshot.layout.activePaneId));
+      if (options.killExisting) {
+        setTabs([]);
+      }
     } finally {
       restoringWorkspaceRef.current = false;
     }
@@ -1097,9 +1059,9 @@ export function App() {
 
   const saveWorkspaceNow = useCallback(async () => {
     const snapshot = buildWorkspaceSnapshot();
+    workspaceSnapshotCacheRef.current.set(snapshot.layout.id, snapshot);
     await window.localtermApi.workspace.save(snapshot);
-    await refreshWorkspaceList();
-  }, [buildWorkspaceSnapshot, refreshWorkspaceList]);
+  }, [buildWorkspaceSnapshot]);
 
   const canPersistCurrentWorkspace = useCallback(() => {
     const entry = workspaceById.get(workspace.id);
@@ -1124,7 +1086,12 @@ export function App() {
     setSaveAsOpen(false);
     setSaveAsName("");
     await refreshWorkspaceList();
-  }, [buildWorkspaceSnapshot, refreshWorkspaceList, restoreWorkspaceSnapshot, saveAsName]);
+  }, [
+    buildWorkspaceSnapshot,
+    refreshWorkspaceList,
+    restoreWorkspaceSnapshot,
+    saveAsName
+  ]);
 
   const switchWorkspace = useCallback(async (workspaceId: string) => {
     if (!workspaceBootstrapped) return;
@@ -1132,12 +1099,26 @@ export function App() {
     setWorkspaceActionBusy(true);
     try {
       if (canPersistCurrentWorkspace()) {
-        await saveWorkspaceNow();
+        void saveWorkspaceNow().catch((error) => {
+          console.error("workspace save before switch failed", error);
+        });
       }
-      const snapshot = await window.localtermApi.workspace.load({ id: workspaceId });
+      const targetMeta = workspaceById.get(workspaceId);
+      const mustLoadFromDisk = targetMeta?.isClosed === true;
+      const cached = workspaceSnapshotCacheRef.current.get(workspaceId);
+      const snapshot =
+        !mustLoadFromDisk && cached
+          ? cached
+          : (await window.localtermApi.workspace.load({ id: workspaceId }));
       // Hot switch: don't kill existing sessions, just change layout
       await restoreWorkspaceSnapshot(snapshot, { killExisting: false, coldBoot: false });
-      await refreshWorkspaceList();
+      if (mustLoadFromDisk) {
+        await refreshWorkspaceList();
+      } else {
+        void refreshWorkspaceList().catch((error) => {
+          console.error("workspace list refresh after switch failed", error);
+        });
+      }
     } finally {
       setWorkspaceActionBusy(false);
     }
@@ -1197,13 +1178,16 @@ export function App() {
         const snapshot = buildWorkspaceSnapshot({
           name: nextName
         });
+        workspaceSnapshotCacheRef.current.set(snapshot.layout.id, snapshot);
         await window.localtermApi.workspace.save(snapshot);
         // Use restoreWorkspaceSnapshot with hot switch to preserve existing sessions
         await restoreWorkspaceSnapshot(snapshot, { killExisting: false, coldBoot: false });
       } else {
-        const snapshot = await window.localtermApi.workspace.load({ id: workspaceRenameTargetId });
+        const cached = workspaceSnapshotCacheRef.current.get(workspaceRenameTargetId);
+        const snapshot = cached ?? (await window.localtermApi.workspace.load({ id: workspaceRenameTargetId }));
         snapshot.layout.name = nextName;
         snapshot.layout.updatedAt = Date.now();
+        workspaceSnapshotCacheRef.current.set(snapshot.layout.id, snapshot);
         await window.localtermApi.workspace.save(snapshot);
       }
       await refreshWorkspaceList();
@@ -1237,7 +1221,8 @@ export function App() {
 
       const nextId = listed.workspaces.find((entry) => !entry.isClosed)?.id;
       if (nextId) {
-        const snapshot = await window.localtermApi.workspace.load({ id: nextId });
+        const cached = workspaceSnapshotCacheRef.current.get(nextId);
+        const snapshot = cached ?? (await window.localtermApi.workspace.load({ id: nextId }));
         // Switching to another workspace = hot switch (keep existing sessions)
         await restoreWorkspaceSnapshot(snapshot, { killExisting: false, coldBoot: false });
         await refreshWorkspaceList();
@@ -1359,11 +1344,16 @@ export function App() {
 
     const bootstrapWorkspace = async () => {
       try {
-        const [result, listed] = await Promise.all([
+        const [result, listed, widgetRegistry] = await Promise.all([
           window.localtermApi.workspace.getDefault(),
-          window.localtermApi.workspace.list()
+          window.localtermApi.workspace.list(),
+          window.localtermApi.widgetRegistry.load()
         ]);
         if (cancelled) return;
+        const restoredWidgets = widgetRegistry.widgets.map((descriptor) =>
+          hydrateWidgetRecordFromDescriptor(descriptor)
+        );
+        setTabs(restoredWidgets);
         setWorkspaceList(listed);
         const snapshot = result.workspace;
         // App startup = cold boot, restore sessions according to restorePolicy
@@ -1384,7 +1374,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [restoreWorkspaceSnapshot]);
+  }, [restoreWorkspaceSnapshot, setTabs]);
 
   useEffect(() => {
     if (!workspaceBootstrapped) return;
@@ -1394,6 +1384,7 @@ export function App() {
     if (!currentWorkspaceMeta || currentWorkspaceMeta.isClosed) return;
     const timer = setTimeout(() => {
       const snapshot = buildWorkspaceSnapshot();
+      workspaceSnapshotCacheRef.current.set(snapshot.layout.id, snapshot);
       void window.localtermApi.workspace.save(snapshot).catch((error) => {
         console.error("workspace autosave failed", error);
       });
@@ -1404,13 +1395,28 @@ export function App() {
     };
   }, [
     buildWorkspaceSnapshot,
-    persistedTabsDigest,
     workspace,
     workspace.id,
     workspaceActionBusy,
     workspaceBootstrapped,
     workspaceById
   ]);
+
+  useEffect(() => {
+    if (!workspaceBootstrapped) return;
+    const timer = setTimeout(() => {
+      const payload = {
+        widgets: toPersistedTabDescriptors(tabs)
+      };
+      void window.localtermApi.widgetRegistry.save(payload).catch((error) => {
+        console.error("widget registry autosave failed", error);
+      });
+    }, WIDGET_REGISTRY_AUTOSAVE_DEBOUNCE_MS);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [tabs, workspaceBootstrapped]);
 
   useEffect(() => {
     const validIds = new Set(tabs.map((tab) => tab.id));
@@ -1602,6 +1608,40 @@ export function App() {
     return new Map(tabs.map((tab) => [tab.id, tab]));
   }, [tabs]);
 
+  const getOrCreateTabMountHost = useCallback((tabId: string) => {
+    const existing = tabMountHostsRef.current.get(tabId);
+    if (existing) return existing;
+    const node = document.createElement("div");
+    node.className = "min-h-0 overflow-hidden";
+    node.style.position = "fixed";
+    node.style.display = "none";
+    node.style.pointerEvents = "auto";
+    node.style.boxSizing = "border-box";
+    tabMountHostsRef.current.set(tabId, node);
+    return node;
+  }, []);
+
+  const setPaneContentHost = useCallback((paneId: string, host: HTMLDivElement | null) => {
+    const current = paneContentHostsRef.current.get(paneId) ?? null;
+    if (current === host) return;
+    if (host) {
+      paneContentHostsRef.current.set(paneId, host);
+    } else {
+      paneContentHostsRef.current.delete(paneId);
+    }
+    setPaneContentHostVersion((value) => value + 1);
+  }, []);
+
+  const getPaneContentRefCallback = useCallback((paneId: string) => {
+    const existing = paneContentRefCallbacksRef.current.get(paneId);
+    if (existing) return existing;
+    const next = (host: HTMLDivElement | null) => {
+      setPaneContentHost(paneId, host);
+    };
+    paneContentRefCallbacksRef.current.set(paneId, next);
+    return next;
+  }, [setPaneContentHost]);
+
   const splitActivePane = useCallback((direction: PaneDirection) => {
     try {
       splitPane({ paneId: resolvedActivePaneId, direction });
@@ -1619,23 +1659,155 @@ export function App() {
     }
   }, [closePane, leafPaneIds.length, resolvedActivePaneId]);
 
-  // Collect all tab IDs that are in the current workspace layout
-  const tabIdsInLayout = useMemo(() => {
-    const collectTabIds = (node: PaneNode): string[] => {
+  const activeTabIdByPane = useMemo(() => {
+    const result = new Map<string, string>();
+    const visit = (node: PaneNode) => {
       if (node.type === "leaf") {
-        return node.tabIds;
+        const paneTabs = node.tabIds
+          .map((tabId) => tabsById.get(tabId))
+          .filter((tab): tab is WidgetTabRecord => Boolean(tab));
+        const paneActiveTabId = paneTabs.some((tab) => tab.id === node.activeTabId)
+          ? node.activeTabId
+          : paneTabs[0]?.id;
+        if (paneActiveTabId) {
+          result.set(node.id, paneActiveTabId);
+        }
+        return;
       }
-      return [...collectTabIds(node.children[0]), ...collectTabIds(node.children[1])];
+      visit(node.children[0]);
+      visit(node.children[1]);
     };
-    return new Set(collectTabIds(workspace.root));
-  }, [workspace.root]);
+    visit(workspace.root);
+    return result;
+  }, [tabsById, workspace.root]);
 
-  // Orphan tabs: exist in tabs array but not in current layout
-  const orphanTabs = useMemo(() => {
-    return tabs.filter(tab => !tabIdsInLayout.has(tab.id));
-  }, [tabs, tabIdsInLayout]);
+  useEffect(() => {
+    const handleViewportChange = () => {
+      setTabViewportVersion((value) => value + 1);
+    };
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
+    return () => {
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!parkedTabHost) return;
+
+    const activeTabIds = new Set(tabs.map((tab) => tab.id));
+    for (const [tabId, host] of tabMountHostsRef.current.entries()) {
+      if (activeTabIds.has(tabId)) continue;
+      if (host.parentElement) {
+        host.parentElement.removeChild(host);
+      }
+      tabMountHostsRef.current.delete(tabId);
+    }
+
+    for (const tab of tabs) {
+      const host = getOrCreateTabMountHost(tab.id);
+      const paneId = findPaneIdByTabId(workspace.root, tab.id);
+      const isPaneActive = paneId ? activeTabIdByPane.get(paneId) === tab.id : false;
+      const paneHost = paneId ? paneContentHostsRef.current.get(paneId) ?? null : null;
+
+      if (host.parentElement !== parkedTabHost || !host.isConnected) {
+        parkedTabHost.appendChild(host);
+      }
+
+      if (!isPaneActive || !paneHost || !paneHost.isConnected) {
+        host.style.display = "none";
+        continue;
+      }
+
+      const rect = paneHost.getBoundingClientRect();
+      if (rect.width <= 1 || rect.height <= 1) {
+        host.style.display = "none";
+        continue;
+      }
+
+      host.style.display = "";
+      host.style.left = `${Math.round(rect.left)}px`;
+      host.style.top = `${Math.round(rect.top)}px`;
+      host.style.width = `${Math.round(rect.width)}px`;
+      host.style.height = `${Math.round(rect.height)}px`;
+    }
+  }, [
+    activeTabIdByPane,
+    getOrCreateTabMountHost,
+    paneContentHostVersion,
+    parkedTabHost,
+    tabViewportVersion,
+    tabs,
+    workspace.root
+  ]);
+
+  useEffect(() => {
+    return () => {
+      for (const host of tabMountHostsRef.current.values()) {
+        if (host.parentElement) {
+          host.parentElement.removeChild(host);
+        }
+      }
+      tabMountHostsRef.current.clear();
+      paneContentHostsRef.current.clear();
+      paneContentRefCallbacksRef.current.clear();
+    };
+  }, []);
 
   const [, updatePanelSizes] = useAtom(updatePanelSizesAtom);
+
+  const tabKeepAlivePortals = useMemo(() => {
+    return tabs.map((tab) => {
+      const paneId = findPaneIdByTabId(workspace.root, tab.id) ?? resolvedActivePaneId;
+      const mountHost = getOrCreateTabMountHost(tab.id);
+      const widgetNode =
+        tab.widget.kind === "extension.widget" ||
+        tab.widget.kind === "file.browser" ||
+        tab.widget.kind === "note.markdown" ? (
+          <PluginWidgetPane
+            tab={tab}
+            isActive={tab.id === activeTabId}
+            workspaceId={workspace.id}
+            workspaceName={workspace.name}
+            tabsSummary={tabsSummary}
+            webviewPreloadUrl={widgetWebviewPreloadUrl}
+            onUpdateInput={updateTabInput}
+            onUpdateTitle={updateTabTitle}
+            onActivateTab={activateTabFromWidgetApi}
+            onOpenWidget={(request) => {
+              void openWidgetTab({
+                ...request,
+                paneId: request.paneId ?? paneId
+              });
+            }}
+          />
+        ) : (
+          <div className="grid h-full min-h-0 place-items-center rounded-lg bg-zinc-950/60 text-xs text-zinc-500">
+            Unsupported tab kind: {tab.widget.kind}
+          </div>
+        );
+      return createPortal(
+        <div className="h-full min-h-0">{widgetNode}</div>,
+        mountHost,
+        tab.id
+      );
+    });
+  }, [
+    activeTabId,
+    activateTabFromWidgetApi,
+    getOrCreateTabMountHost,
+    openWidgetTab,
+    resolvedActivePaneId,
+    tabs,
+    tabsSummary,
+    updateTabInput,
+    updateTabTitle,
+    widgetWebviewPreloadUrl,
+    workspace.id,
+    workspace.name,
+    workspace.root
+  ]);
 
   const renderPaneNode = useCallback((node: PaneNode): ReactNode => {
     if (node.type === "split") {
@@ -1882,44 +2054,10 @@ export function App() {
 
         <div className="min-h-0">
           {paneTabs.length > 0 ? (
-            <div className="relative h-full min-h-0">
-              {paneTabs.map((tab) => (
-                <div
-                  key={tab.id}
-                  className={
-                    tab.id === paneActiveTabId
-                      ? "absolute inset-0 h-full min-h-0"
-                      : "pointer-events-none invisible absolute inset-0 h-full min-h-0"
-                  }
-                >
-                  {tab.widget.kind === "extension.widget" ||
-                    tab.widget.kind === "file.browser" ||
-                    tab.widget.kind === "note.markdown" ? (
-                    <PluginWidgetPane
-                      tab={tab}
-                      isActive={tab.id === activeTabId}
-                      workspaceId={workspace.id}
-                      workspaceName={workspace.name}
-                      tabsSummary={tabsSummary}
-                      webviewPreloadUrl={widgetWebviewPreloadUrl}
-                      onUpdateInput={updateTabInput}
-                      onUpdateTitle={updateTabTitle}
-                      onActivateTab={activateTabFromWidgetApi}
-                      onOpenWidget={(request) => {
-                        void openWidgetTab({
-                          ...request,
-                          paneId: request.paneId ?? node.id
-                        });
-                      }}
-                    />
-                  ) : (
-                    <div className="grid h-full min-h-0 place-items-center rounded-lg bg-zinc-950/60 text-xs text-zinc-500">
-                      Unsupported tab kind: {tab.widget.kind}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+            <div
+              ref={getPaneContentRefCallback(node.id)}
+              className="relative h-full min-h-0"
+            />
           ) : (
             <div className="grid h-full min-h-0 place-items-center rounded-lg bg-zinc-950/45 text-zinc-500">
               <Button
@@ -1947,6 +2085,7 @@ export function App() {
     openTerminalCreateDialog,
     openWidgetTab,
     dropPreview,
+    getPaneContentRefCallback,
     leafPaneIds,
     moveTabToSplitPane,
     moveTab,
@@ -2157,41 +2296,12 @@ export function App() {
         )}
       </main>
 
-      {/* Hidden container for orphan tabs from other workspaces - keeps WebSocket connections alive */}
-      {orphanTabs.length > 0 && (
-        <div className="hidden" aria-hidden="true">
-          {orphanTabs.map((tab) => {
-            if (
-              tab.widget.kind === "extension.widget" ||
-              tab.widget.kind === "file.browser" ||
-              tab.widget.kind === "note.markdown"
-            ) {
-              return (
-                <div key={tab.id} data-orphan-tab={tab.id}>
-                  <PluginWidgetPane
-                    tab={tab}
-                    isActive={false}
-                    workspaceId={workspace.id}
-                    workspaceName={workspace.name}
-                    tabsSummary={tabsSummary}
-                    webviewPreloadUrl={widgetWebviewPreloadUrl}
-                    onUpdateInput={updateTabInput}
-                    onUpdateTitle={updateTabTitle}
-                    onActivateTab={activateTabFromWidgetApi}
-                    onOpenWidget={(request) => {
-                      void openWidgetTab({
-                        ...request,
-                        paneId: workspace.activePaneId
-                      });
-                    }}
-                  />
-                </div>
-              );
-            }
-            return null;
-          })}
-        </div>
-      )}
+      <div
+        ref={setParkedTabHost}
+        className="pointer-events-none fixed inset-0 z-20 overflow-hidden"
+        aria-hidden="true"
+      />
+      {parkedTabHost ? tabKeepAlivePortals : null}
 
       {paneWidgetMenu ? (
         <div

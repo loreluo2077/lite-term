@@ -8,8 +8,10 @@ import {
   closeWorkspaceSnapshot,
   deleteWorkspaceSnapshot,
   getDefaultWorkspaceSnapshot,
+  loadWidgetRegistry,
   listWorkspaces,
   loadWorkspaceSnapshot,
+  saveWidgetRegistry,
   saveWorkspaceSnapshot
 } from "../lib/workspace-storage";
 
@@ -44,5 +46,13 @@ export function registerWorkspaceIpcHandlers() {
 
   ipcMain.handle(IPC_CHANNELS.workspaceGetDefault, async () => {
     return await getDefaultWorkspaceSnapshot(getUserDataDir());
+  });
+
+  ipcMain.handle(IPC_CHANNELS.widgetRegistrySave, async (_event, payload) => {
+    return await saveWidgetRegistry(getUserDataDir(), payload);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.widgetRegistryLoad, async () => {
+    return await loadWidgetRegistry(getUserDataDir());
   });
 }

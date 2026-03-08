@@ -38,6 +38,25 @@ type WebviewLikeElement = HTMLElement & {
   ) => void;
 };
 
+function trySendWebview(
+  webview: WebviewLikeElement | null,
+  channel: string,
+  payload: unknown
+): boolean {
+  if (!webview || !webview.isConnected) {
+    return false;
+  }
+  try {
+    webview.send(channel, payload);
+    return true;
+  } catch (error) {
+    // Moving webview hosts between panes can briefly detach/rebind webview.
+    // In that window, Electron throws if `send` is called before dom-ready.
+    console.debug("[PluginWidgetPane] skip webview.send during transient detach", error);
+    return false;
+  }
+}
+
 function buildErrorResponse(requestId: string, code: string, message: string): WidgetApiResponse {
   return {
     requestId,
@@ -454,7 +473,7 @@ export function PluginWidgetPane({
       const payload = event.args[0] as WidgetApiRequest | undefined;
       if (!payload) return;
       void handleApiRequest(payload).then((response) => {
-        webview.send("widget-api-response", response);
+        trySendWebview(webviewRef.current, "widget-api-response", response);
       });
     };
 
@@ -472,10 +491,13 @@ export function PluginWidgetPane({
     if (!isWebviewReady) return;
     const webview = webviewRef.current;
     if (!webview || !widgetInput) return;
-    webview.send("widget-host-event", {
+    const sent = trySendWebview(webview, "widget-host-event", {
       topic: "state.changed",
       state: widgetInput.state
     });
+    if (!sent) {
+      setIsWebviewReady(false);
+    }
   }, [isWebviewReady, widgetInput]);
 
   if (!widgetInput) {

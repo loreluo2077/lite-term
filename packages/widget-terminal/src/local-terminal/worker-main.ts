@@ -21,13 +21,13 @@ type RuntimeState = {
   ready: boolean;
   exited: boolean;
   activeSocket: WebSocket | null;
-  pendingOutput: Uint8Array[];
-  pendingOutputBytes: number;
+  outputHistory: Uint8Array[];
+  outputHistoryBytes: number;
 };
 
 let runtime: RuntimeState | null = null;
 let shuttingDown = false;
-const MAX_PENDING_OUTPUT_BYTES = 256 * 1024;
+const MAX_OUTPUT_HISTORY_BYTES = 2 * 1024 * 1024;
 
 function sendParent(msg: WorkerChildToParentMessage) {
   if (typeof process.send === "function") {
@@ -42,32 +42,38 @@ function sendSocketEvent(event: object) {
   runtime.activeSocket.send(JSON.stringify(event));
 }
 
-function enqueuePendingOutput(chunk: Uint8Array) {
+function appendOutputHistory(chunk: Uint8Array) {
   if (!runtime) return;
-  runtime.pendingOutput.push(chunk);
-  runtime.pendingOutputBytes += chunk.byteLength;
+  const snapshot = new Uint8Array(chunk);
+  runtime.outputHistory.push(snapshot);
+  runtime.outputHistoryBytes += snapshot.byteLength;
 
-  while (runtime.pendingOutputBytes > MAX_PENDING_OUTPUT_BYTES && runtime.pendingOutput.length > 0) {
-    const removed = runtime.pendingOutput.shift();
-    if (removed) runtime.pendingOutputBytes -= removed.byteLength;
+  while (runtime.outputHistoryBytes > MAX_OUTPUT_HISTORY_BYTES && runtime.outputHistory.length > 0) {
+    const removed = runtime.outputHistory.shift();
+    if (removed) runtime.outputHistoryBytes -= removed.byteLength;
   }
 }
 
 function sendSocketOutput(chunk: Uint8Array) {
   if (!runtime?.activeSocket || runtime.activeSocket.readyState !== runtime.activeSocket.OPEN) {
-    enqueuePendingOutput(chunk);
     return;
   }
   runtime.activeSocket.send(Buffer.from(chunk));
 }
 
-function flushPendingOutput() {
+function replayOutputHistory() {
   if (!runtime?.activeSocket || runtime.activeSocket.readyState !== runtime.activeSocket.OPEN) return;
-  for (const chunk of runtime.pendingOutput) {
+  sendSocketEvent({
+    type: "replay-begin",
+    sessionId: runtime.sessionId
+  });
+  for (const chunk of runtime.outputHistory) {
     runtime.activeSocket.send(Buffer.from(chunk));
   }
-  runtime.pendingOutput = [];
-  runtime.pendingOutputBytes = 0;
+  sendSocketEvent({
+    type: "replay-end",
+    sessionId: runtime.sessionId
+  });
 }
 
 function closeServer() {
@@ -135,13 +141,20 @@ async function initRuntime(message: unknown) {
     ready: false,
     exited: false,
     activeSocket: null,
-    pendingOutput: [],
-    pendingOutputBytes: 0
+    outputHistory: [],
+    outputHistoryBytes: 0
   };
 
   server.on("connection", (socket) => {
+    if (runtime?.activeSocket && runtime.activeSocket !== socket) {
+      try {
+        runtime.activeSocket.close(1000, "replaced by newer client");
+      } catch {
+        // ignore
+      }
+    }
     runtime!.activeSocket = socket;
-    flushPendingOutput();
+    replayOutputHistory();
 
     if (runtime?.ready) {
       sendSocketEvent({
@@ -178,6 +191,7 @@ async function initRuntime(message: unknown) {
   });
 
   adapter.onData((data) => {
+    appendOutputHistory(data);
     sendSocketOutput(data);
   });
 

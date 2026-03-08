@@ -132,6 +132,177 @@ test("local sessions remain responsive when websocket attaches later", async () 
   }
 });
 
+test("local session replays buffered output after websocket reconnect", async () => {
+  const controlPlane = new ControlPlaneService();
+  const shellOpts = createDeterministicShellOptions();
+
+  const session = await controlPlane.createLocalSession({
+    sessionType: "local",
+    cols: 80,
+    rows: 24,
+    shell: shellOpts.shell,
+    shellArgs: shellOpts.shellArgs
+  });
+
+  const first = new WebSocket(`ws://127.0.0.1:${session.port}`);
+  first.binaryType = "nodebuffer";
+  await new Promise<void>((resolve, reject) => {
+    first.once("open", () => resolve());
+    first.once("error", reject);
+  });
+
+  const replayMarker = "__LT_REPLAY_MARKER__";
+  first.send(`echo ${replayMarker}\n`);
+  const firstOutput = await waitForOutput(first, replayMarker);
+  assert.match(firstOutput, new RegExp(replayMarker));
+
+  await new Promise<void>((resolve) => {
+    first.once("close", () => resolve());
+    first.close();
+  });
+
+  const second = new WebSocket(`ws://127.0.0.1:${session.port}`);
+  second.binaryType = "nodebuffer";
+  await new Promise<void>((resolve, reject) => {
+    second.once("open", () => resolve());
+    second.once("error", reject);
+  });
+
+  try {
+    const replayed = await waitForOutput(second, replayMarker);
+    assert.match(replayed, new RegExp(replayMarker));
+
+    const liveMarker = "__LT_REPLAY_LIVE__";
+    second.send(`echo ${liveMarker}\n`);
+    const liveOutput = await waitForOutput(second, liveMarker);
+    assert.match(liveOutput, new RegExp(liveMarker));
+  } finally {
+    await controlPlane.killSession({ sessionId: session.sessionId }).catch(() => undefined);
+    second.close();
+  }
+});
+
+test("local session replay keeps latest data under high-throughput truncation", async () => {
+  const controlPlane = new ControlPlaneService();
+  const shellOpts = createDeterministicShellOptions();
+
+  const session = await controlPlane.createLocalSession({
+    sessionType: "local",
+    cols: 100,
+    rows: 30,
+    shell: shellOpts.shell,
+    shellArgs: shellOpts.shellArgs
+  });
+
+  const first = new WebSocket(`ws://127.0.0.1:${session.port}`);
+  first.binaryType = "nodebuffer";
+  await new Promise<void>((resolve, reject) => {
+    first.once("open", () => resolve());
+    first.once("error", reject);
+  });
+
+  const startMarker = "__LT_BULK_START__";
+  const endMarker = "__LT_BULK_END__";
+  const tailMarker = "__LT_BULK_TAIL__";
+  const burstCommand = [
+    "echo __LT_BULK_ST\"\"ART__",
+    "i=0",
+    "while [ $i -lt 50000 ]; do",
+    "printf '__LT_BULK_LINE_%05d__:%080d\\n' \"$i\" 0",
+    "  i=$((i+1))",
+    "done",
+    "echo __LT_BULK_EN\"\"D__",
+    "echo __LT_BULK_TA\"\"IL__"
+  ].join("\n");
+  first.send(`${burstCommand}\n`);
+
+  await waitForOutput(first, tailMarker, 45_000);
+
+  await new Promise<void>((resolve) => {
+    first.once("close", () => resolve());
+    first.close();
+  });
+
+  const second = new WebSocket(`ws://127.0.0.1:${session.port}`);
+  second.binaryType = "nodebuffer";
+  await new Promise<void>((resolve, reject) => {
+    second.once("open", () => resolve());
+    second.once("error", reject);
+  });
+
+  try {
+    const replayed = await waitForOutput(second, tailMarker, 30_000);
+    const replayedBytes = Buffer.byteLength(replayed, "utf8");
+    assert.match(replayed, new RegExp(endMarker));
+    assert.match(replayed, new RegExp(tailMarker));
+    assert.ok(
+      replayedBytes <= 2_300_000,
+      `replayed payload should stay near history cap, got ${replayedBytes} bytes`
+    );
+  } finally {
+    await controlPlane.killSession({ sessionId: session.sessionId }).catch(() => undefined);
+    second.close();
+  }
+});
+
+test("local session keeps streaming after reconnect during active burst", async () => {
+  const controlPlane = new ControlPlaneService();
+  const shellOpts = createDeterministicShellOptions();
+
+  const session = await controlPlane.createLocalSession({
+    sessionType: "local",
+    cols: 100,
+    rows: 30,
+    shell: shellOpts.shell,
+    shellArgs: shellOpts.shellArgs
+  });
+
+  const first = new WebSocket(`ws://127.0.0.1:${session.port}`);
+  first.binaryType = "nodebuffer";
+  await new Promise<void>((resolve, reject) => {
+    first.once("open", () => resolve());
+    first.once("error", reject);
+  });
+
+  const streamDone = "__LT_STREAM_DONE__";
+  const streamHead = "__LT_STREAM_020__";
+  const streamTail = "__LT_STREAM_200__";
+  const streamCommand = [
+    "i=1",
+    "while [ $i -le 200 ]; do",
+    "printf '__LT_STREAM_%03d__\\n' \"$i\"",
+    "  i=$((i+1))",
+    "  sleep 0.01",
+    "done",
+    "echo __LT_STREAM_D\"\"ONE__"
+  ].join("\n");
+  first.send(`${streamCommand}\n`);
+
+  await waitForOutput(first, streamHead, 20_000);
+
+  await new Promise<void>((resolve) => {
+    first.once("close", () => resolve());
+    first.close();
+  });
+
+  const second = new WebSocket(`ws://127.0.0.1:${session.port}`);
+  second.binaryType = "nodebuffer";
+  await new Promise<void>((resolve, reject) => {
+    second.once("open", () => resolve());
+    second.once("error", reject);
+  });
+
+  try {
+    const reachedTail = await waitForOutput(second, streamTail, 20_000);
+    assert.match(reachedTail, new RegExp(streamTail));
+    const reachedDone = await waitForOutput(second, streamDone, 20_000);
+    assert.match(reachedDone, new RegExp(streamDone));
+  } finally {
+    await controlPlane.killSession({ sessionId: session.sessionId }).catch(() => undefined);
+    second.close();
+  }
+});
+
 test("one session maps to one worker process (unique pid/port)", async () => {
   const controlPlane = new ControlPlaneService();
   const shellOpts = createDeterministicShellOptions();

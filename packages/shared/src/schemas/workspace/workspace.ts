@@ -151,6 +151,10 @@ export const workspaceGetDefaultResponseSchema = z.object({
   workspace: workspaceSnapshotSchema.nullable()
 });
 
+export const widgetRegistrySnapshotSchema = z.object({
+  widgets: z.array(widgetTabDescriptorSchema)
+});
+
 export type PaneDirection = z.infer<typeof paneDirectionSchema>;
 export type FloatingPanelDescriptor = z.infer<typeof floatingPanelDescriptorSchema>;
 export type OverlayLayout = z.infer<typeof overlayLayoutSchema>;
@@ -163,3 +167,4 @@ export type WorkspaceIndex = z.infer<typeof workspaceIndexSchema>;
 export type WorkspaceIdRequest = z.infer<typeof workspaceIdRequestSchema>;
 export type WorkspaceListResponse = z.infer<typeof workspaceListResponseSchema>;
 export type WorkspaceGetDefaultResponse = z.infer<typeof workspaceGetDefaultResponseSchema>;
+export type WidgetRegistrySnapshot = z.infer<typeof widgetRegistrySnapshotSchema>;

@@ -1,9 +1,11 @@
 import crypto from "node:crypto";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { _electron as electron, expect, test } from "@playwright/test";
+import { WebSocket } from "ws";
 
 const require = createRequire(import.meta.url);
 const electronBinary = require("electron");
@@ -38,6 +40,14 @@ function shortHash(value) {
   return crypto.createHash("sha1").update(value).digest("hex").slice(0, 8);
 }
 
+function hasOpencodeCli() {
+  if (process.platform === "win32") return false;
+  const probe = spawnSync("sh", ["-lc", "command -v opencode >/dev/null 2>&1"], {
+    stdio: "ignore"
+  });
+  return probe.status === 0;
+}
+
 async function fileExists(filePath) {
   try {
     await fs.access(filePath);
@@ -45,6 +55,62 @@ async function fileExists(filePath) {
   } catch {
     return false;
   }
+}
+
+async function openSessionSocket(port) {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+  ws.binaryType = "nodebuffer";
+  await new Promise((resolve, reject) => {
+    ws.once("open", resolve);
+    ws.once("error", reject);
+  });
+  return ws;
+}
+
+function waitForSocketOutput(ws, marker, timeoutMs = 20_000) {
+  return new Promise((resolve, reject) => {
+    let buffer = "";
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out waiting for marker: ${marker}`));
+    }, timeoutMs);
+
+    const onMessage = (data, isBinary) => {
+      if (isBinary) {
+        buffer += data.toString("utf8");
+      } else {
+        const text = data.toString();
+        try {
+          const event = JSON.parse(text);
+          if (event?.type === "error") {
+            cleanup();
+            reject(new Error(event?.message || "worker error event"));
+            return;
+          }
+        } catch {
+          buffer += text;
+        }
+      }
+      if (buffer.includes(marker)) {
+        cleanup();
+        resolve(buffer);
+      }
+    };
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      ws.off("message", onMessage);
+    };
+
+    ws.on("message", onMessage);
+  });
+}
+
+async function getFirstReadySession(pageHandle) {
+  return await pageHandle.evaluate(async () => {
+    const listed = await window.localtermApi.session.listSessions();
+    return listed.sessions.find((entry) => entry.status === "ready") ?? listed.sessions[0] ?? null;
+  });
 }
 
 async function waitForMainWindow(appHandle) {
@@ -490,6 +556,58 @@ test("workspace save-as hot switch keeps local session alive", async ({}, testIn
     }, baseSessionId);
     expect(sessionStillExists).toBeTruthy();
   });
+});
+
+test("workspace switch keeps opencode TUI session alive", async ({}, testInfo) => {
+  test.skip(!hasOpencodeCli(), "opencode CLI is not installed in this environment");
+  test.setTimeout(120_000);
+
+  await createWorkspaceFromMenu(page, testInfo);
+
+  await runHumanStep(page, testInfo, "create-terminal-with-opencode-startup", async () => {
+    await clickPaneWidgetMenuItem(page, 0, "Terminal");
+    await expect(page.getByRole("heading", { name: "Terminal Startup Scripts" })).toBeVisible();
+    await page.getByRole("button", { name: "+ Add Startup Script" }).click();
+    await page.locator('input[type="number"]').first().fill("10");
+    await page.getByPlaceholder("Command").first().fill(
+      "printf '__E2E_OPENCODE_BOOT__\\n'; opencode & __LT_OC_PID=$!; sleep 3; kill -INT $__LT_OC_PID >/dev/null 2>&1 || true; wait $__LT_OC_PID >/dev/null 2>&1 || true; echo __E2E_OPENCODE_DONE__"
+    );
+    await page.getByRole("button", { name: "Create Terminal" }).click();
+
+    await expect(page.getByRole("heading", { name: "Terminal Startup Scripts" })).toHaveCount(0);
+    await expect(page.getByText(/Terminal\s*\d+\s*\[(starting|ready)\]/).first()).toBeVisible({
+      timeout: 30_000
+    });
+  });
+
+  const sourceWorkspaceName = await getActiveWorkspaceName(page);
+  expect(sourceWorkspaceName).toBeTruthy();
+
+  await runHumanStep(page, testInfo, "switch-to-new-workspace-while-opencode-running", async () => {
+    await page.getByTitle("Workspace Menu").click();
+    await page.getByRole("button", { name: "New Workspace" }).click();
+    await expect(page.getByRole("button", { name: "Pane Widget Menu" }).first()).toBeVisible();
+  });
+
+  await runHumanStep(page, testInfo, "switch-back-to-source-workspace", async () => {
+    await page.getByTitle(exactTextPattern(sourceWorkspaceName)).click();
+    await expect(page.getByRole("tab").filter({ hasText: /^Terminal\s+\d+/ }).first()).toBeVisible();
+  });
+
+  const targetSession = await getFirstReadySession(page);
+  expect(targetSession).toBeTruthy();
+  expect(targetSession.port).toBeGreaterThan(0);
+
+  const ws = await openSessionSocket(targetSession.port);
+  try {
+    ws.send("\u0003");
+    ws.send("\u0003");
+    ws.send("echo __E2E_OPENCODE_AFTER_SWITCH__\n");
+    const afterSwitch = await waitForSocketOutput(ws, "__E2E_OPENCODE_AFTER_SWITCH__", 30_000);
+    expect(afterSwitch.includes("__E2E_OPENCODE_AFTER_SWITCH__")).toBeTruthy();
+  } finally {
+    ws.close();
+  }
 });
 
 test("tab drag-drop center moves tab without creating extra split", async ({}, testInfo) => {

@@ -12,6 +12,7 @@ import type {
   WorkspaceIdRequest,
   WorkspaceListResponse,
   WorkspaceSnapshot,
+  WidgetRegistrySnapshot,
   FsPickDirectoryResponse,
   FsPickFileRequest,
   FsPickFileResponse,
@@ -52,6 +53,10 @@ declare global {
         close(payload: WorkspaceIdRequest): Promise<OkResponse>;
         delete(payload: WorkspaceIdRequest): Promise<OkResponse>;
         getDefault(): Promise<WorkspaceGetDefaultResponse>;
+      };
+      widgetRegistry: {
+        save(payload: WidgetRegistrySnapshot): Promise<OkResponse>;
+        load(): Promise<WidgetRegistrySnapshot>;
       };
       file: {
         pickDirectory(): Promise<FsPickDirectoryResponse>;

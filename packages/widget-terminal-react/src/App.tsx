@@ -73,6 +73,11 @@ export default function App() {
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const wsReplayRef = useRef<{ active: boolean; accept: boolean }>({
+    active: false,
+    accept: false
+  });
+  const needsReplayHydrationRef = useRef(true);
   const bootstrappedRef = useRef(false);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const resizeTimerRef = useRef<number | null>(null);
@@ -182,6 +187,8 @@ export default function App() {
       ws.addEventListener("message", (event) => {
         const terminal = terminalRef.current;
         if (!terminal) return;
+        const shouldSkipReplayChunk =
+          wsReplayRef.current.active && !wsReplayRef.current.accept;
 
         if (typeof event.data === "string") {
           try {
@@ -204,15 +211,41 @@ export default function App() {
               void patchState({ status: "error", wsConnected: false }).catch(() => undefined);
               return;
             }
+            if (control.type === "replay-begin") {
+              const acceptReplay = needsReplayHydrationRef.current;
+              wsReplayRef.current = {
+                active: true,
+                accept: acceptReplay
+              };
+              if (acceptReplay) {
+                terminal.reset();
+                setHasSelection(false);
+              }
+              return;
+            }
+            if (control.type === "replay-end") {
+              if (wsReplayRef.current.accept) {
+                needsReplayHydrationRef.current = false;
+              }
+              wsReplayRef.current = {
+                active: false,
+                accept: false
+              };
+              return;
+            }
           } catch {
+            if (shouldSkipReplayChunk) return;
             terminal.write(event.data);
+            needsReplayHydrationRef.current = false;
             return;
           }
           return;
         }
 
         if (event.data instanceof ArrayBuffer) {
+          if (shouldSkipReplayChunk) return;
           terminal.write(decoder.decode(event.data));
+          needsReplayHydrationRef.current = false;
         }
       });
 
@@ -418,6 +451,10 @@ export default function App() {
 
       resizeObserverRef.current?.disconnect();
       resizeObserverRef.current = null;
+      wsReplayRef.current = {
+        active: false,
+        accept: false
+      };
 
       for (const disposable of terminalDisposablesRef.current) {
         try {
