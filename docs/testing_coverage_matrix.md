@@ -16,13 +16,12 @@
 | 功能点 | integration | e2e | 状态 |
 |---|---|---|---|
 | 创建 workspace | `tests/integration/workspace-storage.test.ts` | `workspace + extension terminal widget end-to-end smoke` | 已覆盖 |
-| 切换 workspace（热切换） | `tests/integration/workspace-storage.test.ts` | `workspace save-as hot switch keeps local session alive` | 已覆盖 |
+| 切换 workspace（隐藏切换） | `tests/integration/workspace-storage.test.ts` | `workspace save-as hot switch keeps local session alive` + `workspace switch keeps opencode TUI session alive` | 已覆盖 |
 | 关闭到历史并重开 | `tests/integration/workspace-storage.test.ts` | `workspace close to history then reopen from picker` | 已覆盖 |
 | Save As 生成新快照 | `tests/integration/workspace-storage.test.ts` | `workspace save-as hot switch keeps local session alive` | 已覆盖 |
 | workspace 顺序稳定/追加规则 | `tests/integration/workspace-order.test.ts` | - | 已覆盖（integration） |
 | 空默认/损坏快照回退 | `tests/integration/workspace-storage.test.ts` | - | 已覆盖（integration） |
 | workspaceId 路径安全 | `tests/integration/workspace-storage.test.ts` | - | 已覆盖（integration） |
-| 旧快照终端迁移（legacy terminal.local -> extension terminal） | `tests/integration/workspace-storage.test.ts` | - | 已覆盖（integration） |
 
 ## 2. Panel / Tab
 
@@ -55,6 +54,9 @@
 |---|---|---|---|
 | create -> ws -> output -> resize -> kill | `tests/integration/local-session.test.ts` | `workspace + extension terminal widget...` | 已覆盖 |
 | 延迟连接后仍可用 | `tests/integration/local-session.test.ts` | - | 已覆盖（integration） |
+| websocket 重连后不回放历史输出 | `tests/integration/local-session.test.ts` | - | 已覆盖（integration） |
+| 高吞吐后重连仍可继续实时输入输出 | `tests/integration/local-session.test.ts` | - | 已覆盖（integration） |
+| 活跃输出期间重连后持续流式输出 | `tests/integration/local-session.test.ts` | - | 已覆盖（integration） |
 | 一会话一 worker（pid/port 唯一） | `tests/integration/local-session.test.ts` | - | 已覆盖（integration） |
 | registry lifecycle 更新 | `tests/integration/local-session.test.ts` | - | 已覆盖（integration） |
 | startup scripts UI 路径 | `tests/integration/workspace-schema.test.ts`（结构） | `terminal startup scripts creation path works` | 已覆盖 |
@@ -80,5 +82,4 @@
 
 1. `P1` 分隔条 resize 后重启恢复（panel size persistence）
 2. `P1` 关闭 terminal tab 后 session 真正释放（UI+control-plane 联动）
-3. `P2` 冷启动 legacy snapshot 迁移后的端到端回归路径
-4. `P2` extension.widget 的多扩展并存冲突场景（同 widgetId 不同 extensionId）回归
+3. `P2` extension.widget 的多扩展并存冲突场景（同 widgetId 不同 extensionId）回归

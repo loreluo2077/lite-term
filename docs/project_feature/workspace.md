@@ -26,14 +26,14 @@ Workspace 是可持久化的协作快照，包含：
 
 - 新建空 workspace
 - 立即切换并保存
-- 保持其他 workspace 运行态（热切换）
+- 不销毁已创建 widget 实例，仅更新布局归属
 
-### 3.2 切换（Hot Switch）
+### 3.2 切换（与 Tab 同模型）
 
 - 切换前自动保存当前 workspace（可持久化时）
 - 默认不 kill 现有 `extension terminal` session
-- 不在当前布局中的 tab 以 orphan 形式隐藏保活
-- `extension terminal` webview 在 orphan 容器中继续保活
+- workspace/tab 切换都只做可见性切换，不重建 widget host
+- `extension terminal` webview 与会话保持原连接状态
 
 ### 3.3 重命名 / Save As
 
@@ -58,7 +58,7 @@ Workspace 是可持久化的协作快照，包含：
 - 启动时读取默认 workspace 快照
 - 按 `restorePolicy` 恢复运行态（主路径为 `manual`）
 - `extension terminal`（`extensionId=builtin.workspace, widgetId=terminal.local`）在 webview bootstrap 时通过 `widgetApi.terminal.create` 自行拉起会话
-- 历史快照中的 `widget.kind=terminal.local` 会在存储层自动迁移为 `extension terminal` 描述
+- 历史不符合 schema 的旧快照会被拒绝加载
 
 ### 4.2 自动保存
 
@@ -100,7 +100,7 @@ Workspace 是可持久化的协作快照，包含：
 ## 9. 人类验收
 
 - workspace 切换稳定，无错误覆盖
-- 热切换不丢运行态，冷启动按策略恢复
+- workspace/tab 切换均不丢运行态，冷启动按策略恢复
 - 自动保存生效，异常退出后可恢复最近可用状态
 - 非法旧协议快照会被拒绝并暴露错误
 

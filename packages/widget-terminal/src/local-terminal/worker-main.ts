@@ -21,13 +21,10 @@ type RuntimeState = {
   ready: boolean;
   exited: boolean;
   activeSocket: WebSocket | null;
-  outputHistory: Uint8Array[];
-  outputHistoryBytes: number;
 };
 
 let runtime: RuntimeState | null = null;
 let shuttingDown = false;
-const MAX_OUTPUT_HISTORY_BYTES = 2 * 1024 * 1024;
 
 function sendParent(msg: WorkerChildToParentMessage) {
   if (typeof process.send === "function") {
@@ -42,38 +39,11 @@ function sendSocketEvent(event: object) {
   runtime.activeSocket.send(JSON.stringify(event));
 }
 
-function appendOutputHistory(chunk: Uint8Array) {
-  if (!runtime) return;
-  const snapshot = new Uint8Array(chunk);
-  runtime.outputHistory.push(snapshot);
-  runtime.outputHistoryBytes += snapshot.byteLength;
-
-  while (runtime.outputHistoryBytes > MAX_OUTPUT_HISTORY_BYTES && runtime.outputHistory.length > 0) {
-    const removed = runtime.outputHistory.shift();
-    if (removed) runtime.outputHistoryBytes -= removed.byteLength;
-  }
-}
-
 function sendSocketOutput(chunk: Uint8Array) {
   if (!runtime?.activeSocket || runtime.activeSocket.readyState !== runtime.activeSocket.OPEN) {
     return;
   }
   runtime.activeSocket.send(Buffer.from(chunk));
-}
-
-function replayOutputHistory() {
-  if (!runtime?.activeSocket || runtime.activeSocket.readyState !== runtime.activeSocket.OPEN) return;
-  sendSocketEvent({
-    type: "replay-begin",
-    sessionId: runtime.sessionId
-  });
-  for (const chunk of runtime.outputHistory) {
-    runtime.activeSocket.send(Buffer.from(chunk));
-  }
-  sendSocketEvent({
-    type: "replay-end",
-    sessionId: runtime.sessionId
-  });
 }
 
 function closeServer() {
@@ -140,9 +110,7 @@ async function initRuntime(message: unknown) {
     adapter,
     ready: false,
     exited: false,
-    activeSocket: null,
-    outputHistory: [],
-    outputHistoryBytes: 0
+    activeSocket: null
   };
 
   server.on("connection", (socket) => {
@@ -154,7 +122,6 @@ async function initRuntime(message: unknown) {
       }
     }
     runtime!.activeSocket = socket;
-    replayOutputHistory();
 
     if (runtime?.ready) {
       sendSocketEvent({
@@ -191,7 +158,6 @@ async function initRuntime(message: unknown) {
   });
 
   adapter.onData((data) => {
-    appendOutputHistory(data);
     sendSocketOutput(data);
   });
 

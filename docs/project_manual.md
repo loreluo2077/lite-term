@@ -22,7 +22,7 @@ Lo-Fi Room 聚焦多 agent 并行协作、多 workspace 切换、以及终端与
 
 - 新建、切换、重命名、关闭、历史重开
 - 自动保存与冷启动恢复
-- 热切换保活（尽量不影响运行中的 terminal）
+- 切换仅做 widget 可见性切换，不重建运行中的 terminal
 
 ### 3.2 Panel / Tab
 
@@ -50,7 +50,7 @@ Lo-Fi Room 聚焦多 agent 并行协作、多 workspace 切换、以及终端与
 - create / resize / kill / list
 - 独立 worker 与独立 WS 端口
 - startup scripts（延时执行）
-- 断连可重连
+- 断连可重连（不做历史输出回放）
 
 ## 4. 数据协议
 

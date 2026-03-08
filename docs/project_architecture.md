@@ -90,7 +90,8 @@
 
 - 控制平面与数据平面分离
 - 一会话一 worker 隔离
-- workspace 热切换保持运行态（orphan tab 隐藏保活）
+- widget host 全局常驻（按 `tabId` 挂载），workspace/tab 切换仅做显示切换
+- workspace 切换不 reparent webview host，避免切换抖动与会话重建
 - session 生命周期仅挂在 extension terminal widget
 
 ## 7. 扩展点

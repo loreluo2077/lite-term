@@ -5,6 +5,35 @@ import { ControlPlaneService, readRegistrySnapshot } from "@localterm/control-pl
 import { createDeterministicShellOptions, waitForOutput } from "@localterm/testkit";
 import { sessionWorkerControlEventSchema } from "@localterm/shared";
 
+function assertNoOutputMarker(ws: WebSocket, marker: string, durationMs = 1500) {
+  return new Promise<void>((resolve, reject) => {
+    let buffer = "";
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, durationMs);
+
+    const onMessage = (data: Buffer, isBinary: boolean) => {
+      if (!isBinary) {
+        buffer += data.toString();
+      } else {
+        buffer += data.toString("utf8");
+      }
+      if (buffer.includes(marker)) {
+        cleanup();
+        reject(new Error(`unexpected marker replayed: ${marker}\nReceived:\n${buffer}`));
+      }
+    };
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      ws.off("message", onMessage as never);
+    };
+
+    ws.on("message", onMessage as never);
+  });
+}
+
 test("local session smoke: create -> ws -> output -> resize -> kill", async () => {
   const controlPlane = new ControlPlaneService();
   const shellOpts = createDeterministicShellOptions();
@@ -132,7 +161,7 @@ test("local sessions remain responsive when websocket attaches later", async () 
   }
 });
 
-test("local session replays buffered output after websocket reconnect", async () => {
+test("local session does not replay buffered output after websocket reconnect", async () => {
   const controlPlane = new ControlPlaneService();
   const shellOpts = createDeterministicShellOptions();
 
@@ -155,6 +184,7 @@ test("local session replays buffered output after websocket reconnect", async ()
   first.send(`echo ${replayMarker}\n`);
   const firstOutput = await waitForOutput(first, replayMarker);
   assert.match(firstOutput, new RegExp(replayMarker));
+  await new Promise((resolve) => setTimeout(resolve, 400));
 
   await new Promise<void>((resolve) => {
     first.once("close", () => resolve());
@@ -169,8 +199,7 @@ test("local session replays buffered output after websocket reconnect", async ()
   });
 
   try {
-    const replayed = await waitForOutput(second, replayMarker);
-    assert.match(replayed, new RegExp(replayMarker));
+    await assertNoOutputMarker(second, replayMarker);
 
     const liveMarker = "__LT_REPLAY_LIVE__";
     second.send(`echo ${liveMarker}\n`);
@@ -182,7 +211,7 @@ test("local session replays buffered output after websocket reconnect", async ()
   }
 });
 
-test("local session replay keeps latest data under high-throughput truncation", async () => {
+test("local session reconnect after high-throughput does not replay old output", async () => {
   const controlPlane = new ControlPlaneService();
   const shellOpts = createDeterministicShellOptions();
 
@@ -202,7 +231,6 @@ test("local session replay keeps latest data under high-throughput truncation", 
   });
 
   const startMarker = "__LT_BULK_START__";
-  const endMarker = "__LT_BULK_END__";
   const tailMarker = "__LT_BULK_TAIL__";
   const burstCommand = [
     "echo __LT_BULK_ST\"\"ART__",
@@ -231,14 +259,11 @@ test("local session replay keeps latest data under high-throughput truncation", 
   });
 
   try {
-    const replayed = await waitForOutput(second, tailMarker, 30_000);
-    const replayedBytes = Buffer.byteLength(replayed, "utf8");
-    assert.match(replayed, new RegExp(endMarker));
-    assert.match(replayed, new RegExp(tailMarker));
-    assert.ok(
-      replayedBytes <= 2_300_000,
-      `replayed payload should stay near history cap, got ${replayedBytes} bytes`
-    );
+    await assertNoOutputMarker(second, tailMarker);
+    const liveMarker = "__LT_AFTER_BULK_RECONNECT__";
+    second.send(`echo ${liveMarker}\n`);
+    const liveOutput = await waitForOutput(second, liveMarker, 15_000);
+    assert.match(liveOutput, new RegExp(liveMarker));
   } finally {
     await controlPlane.killSession({ sessionId: session.sessionId }).catch(() => undefined);
     second.close();

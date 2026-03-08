@@ -61,7 +61,8 @@ Session 仅属于本地终端类 widget 的运行时资源（`extension terminal
 ### 5.2 重连与保活
 
 - worker 允许断连后重连
-- workspace 热切换场景可保持会话运行态
+- 重连后仅接收连接建立后的新输出（不做历史回放）
+- workspace/tab 切换均只隐藏 UI，session 不被重建
 - `extension terminal` 的 webview 侧支持按 `sessionId` 恢复已有 session（list + reconnect）
 
 ### 5.3 终端渲染与交互（xterm.js）
@@ -113,7 +114,7 @@ Session 仅属于本地终端类 widget 的运行时资源（`extension terminal
 
 - 新建 `extension terminal`，确认状态从 `starting` 到 `ready`
 - 输入输出正常，关闭后退出
-- 热切换 workspace 后返回，终端可继续交互
+- workspace/tab 切换后返回，终端可继续交互
 - 配置 startup scripts 后验证执行顺序与去重
 - 验证 `extension terminal` webview 显示 `ws connected/disconnected` 与 session 状态一致
 
@@ -122,5 +123,5 @@ Session 仅属于本地终端类 widget 的运行时资源（`extension terminal
 - Session 只在 `extension terminal` 上出现
 - 非终端类 widget 不应触发会话相关逻辑
 - 多会话并发无串线、无端口冲突
-- 热切换与冷启动恢复行为符合预期
+- workspace/tab 切换与冷启动恢复行为符合预期
 - 关闭 `extension terminal` 后，对应 session 应从 `session.list` 中消失
