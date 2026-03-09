@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { Diff, Hunk, parseDiff, type ChangeData } from "react-diff-view";
 import type { DiffReviewFile, TextSelectionInfo } from "../types";
 
@@ -8,7 +8,14 @@ const NEW_LINE_PREFIX = "line-new-";
 type DiffPreviewPanelProps = {
   file: DiffReviewFile | null;
   onSelectionChange: (selection: TextSelectionInfo | null) => void;
+  onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void;
 };
+
+function statusLabel(status: DiffReviewFile["status"]) {
+  if (status === "A") return "新增";
+  if (status === "D") return "删除";
+  return "修改";
+}
 
 function toLineNumber(change: ChangeData) {
   if (change.type === "insert") {
@@ -91,7 +98,7 @@ function readSelection(container: HTMLElement) {
   } as TextSelectionInfo;
 }
 
-export function DiffPreviewPanel({ file, onSelectionChange }: DiffPreviewPanelProps) {
+export function DiffPreviewPanel({ file, onSelectionChange, onContextMenu }: DiffPreviewPanelProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
 
   const parsedFile = useMemo(() => {
@@ -135,7 +142,7 @@ export function DiffPreviewPanel({ file, onSelectionChange }: DiffPreviewPanelPr
 
   if (!file) {
     return (
-      <section className="grid min-h-0 place-items-center rounded border border-slate-700 bg-slate-950/70 p-4 text-sm text-slate-400">
+      <section className="diff-preview diff-preview--placeholder" onContextMenu={onContextMenu}>
         请先在左侧选择一个文件。
       </section>
     );
@@ -143,9 +150,9 @@ export function DiffPreviewPanel({ file, onSelectionChange }: DiffPreviewPanelPr
 
   if (!parsedFile) {
     return (
-      <section className="min-h-0 overflow-auto rounded border border-slate-700 bg-slate-950/70 p-3 text-xs text-slate-300">
-        <p className="m-0 mb-2 text-slate-400">无法解析当前 diff，原始内容如下：</p>
-        <pre className="m-0 whitespace-pre-wrap break-words">{file.patch}</pre>
+      <section className="diff-preview diff-preview--error" onContextMenu={onContextMenu}>
+        <p className="diff-preview__error-title">无法解析当前 diff，原始内容如下：</p>
+        <pre className="diff-preview__error-content">{file.patch}</pre>
       </section>
     );
   }
@@ -153,14 +160,18 @@ export function DiffPreviewPanel({ file, onSelectionChange }: DiffPreviewPanelPr
   return (
     <section
       ref={panelRef}
-      className="diff-review-panel min-h-0 overflow-auto rounded border border-slate-700 bg-slate-950/70"
+      className="diff-preview diff-review-panel"
       onMouseUp={handleSelectionCapture}
       onKeyUp={handleSelectionCapture}
+      onContextMenu={onContextMenu}
     >
-      <div className="sticky top-0 z-10 border-b border-slate-800 bg-slate-950/95 px-3 py-2 text-xs text-slate-300">
-        {file.path}
+      <div className="diff-preview__header">
+        <span className="diff-preview__path">{file.path}</span>
+        <span className={`diff-preview__status diff-preview__status--${file.status.toLowerCase()}`}>
+          {file.status} · {statusLabel(file.status)}
+        </span>
       </div>
-      <div className="p-2">
+      <div className="diff-preview__body">
         <Diff
           viewType="unified"
           diffType={parsedFile.type}

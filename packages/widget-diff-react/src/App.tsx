@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { DiffFileList } from "./components/DiffFileList";
 import { DiffPreviewPanel } from "./components/DiffPreviewPanel";
-import { DiffReviewToolbar } from "./components/DiffReviewToolbar";
 import {
   copyTextToClipboard,
   formatFileInfoAndSelection,
@@ -20,6 +19,11 @@ const DEFAULT_STATE: DiffReviewWidgetState = {
   files: SAMPLE_DIFF_FILES,
   selectedPath: SAMPLE_DIFF_FILES[0]?.path ?? null
 };
+
+type ContextMenuState = {
+  x: number;
+  y: number;
+} | null;
 
 function isValidStatus(value: unknown): value is DiffFileStatus {
   return value === "A" || value === "M" || value === "D";
@@ -59,11 +63,21 @@ function normalizeState(raw: Record<string, unknown> | null | undefined): DiffRe
   };
 }
 
+function clampContextMenuPosition(clientX: number, clientY: number) {
+  const menuWidth = 208;
+  const menuHeight = 200;
+  return {
+    x: Math.max(8, Math.min(clientX, window.innerWidth - menuWidth - 8)),
+    y: Math.max(8, Math.min(clientY, window.innerHeight - menuHeight - 8))
+  };
+}
+
 export default function App() {
   const api = getWidgetApi();
   const [state, setState] = useState<DiffReviewWidgetState>(DEFAULT_STATE);
   const [selection, setSelection] = useState<TextSelectionInfo | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
   const stateRef = useRef<DiffReviewWidgetState>(DEFAULT_STATE);
   const bootstrappedRef = useRef(false);
 
@@ -120,6 +134,7 @@ export default function App() {
     if (!state.selectedPath) return state.files[0] ?? null;
     return state.files.find((file) => file.path === state.selectedPath) ?? state.files[0] ?? null;
   }, [state.files, state.selectedPath]);
+  const hasSelection = Boolean(selection?.text.trim());
 
   const selectFile = useCallback(
     async (filePath: string) => {
@@ -159,34 +174,122 @@ export default function App() {
   }, [copyWithStatus, selectedFile]);
 
   const handleCopySelection = useCallback(() => {
-    if (!selection) return;
+    if (!selection || !selection.text.trim()) return;
     void copyWithStatus(selection.text, "选中文本已复制");
   }, [copyWithStatus, selection]);
 
   const handleCopyFileAndSelection = useCallback(() => {
-    if (!selectedFile || !selection) return;
+    if (!selectedFile || !selection || !selection.text.trim()) return;
     void copyWithStatus(
       formatFileInfoAndSelection(selectedFile, selection),
       "文件信息与摘录已复制"
     );
   }, [copyWithStatus, selectedFile, selection]);
 
-  return (
-    <main className="grid h-full min-h-0 grid-rows-[auto_1fr] gap-2 bg-[radial-gradient(circle_at_top_left,rgba(54,92,150,0.18),transparent_45%)] bg-zinc-950 p-2 text-zinc-100">
-      <DiffReviewToolbar
-        selectedFile={selectedFile}
-        selection={selection}
-        statusMessage={statusMessage}
-        onCopyPath={handleCopyPath}
-        onCopyPathWithName={handleCopyPathWithName}
-        onCopySelection={handleCopySelection}
-        onCopyFileAndSelection={handleCopyFileAndSelection}
-      />
+  const handleContextMenu = useCallback((event: ReactMouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    setContextMenu(clampContextMenuPosition(event.clientX, event.clientY));
+  }, []);
 
-      <section className="grid min-h-0 grid-cols-1 gap-2 md:grid-cols-[280px_1fr]">
+  useEffect(() => {
+    if (!contextMenu) return;
+
+    const dismiss = () => {
+      setContextMenu(null);
+    };
+
+    const handleMouseDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest(".diff-context-menu")) return;
+      dismiss();
+    };
+
+    window.addEventListener("mousedown", handleMouseDown);
+    window.addEventListener("blur", dismiss);
+    window.addEventListener("resize", dismiss);
+    window.addEventListener("scroll", dismiss, true);
+
+    return () => {
+      window.removeEventListener("mousedown", handleMouseDown);
+      window.removeEventListener("blur", dismiss);
+      window.removeEventListener("resize", dismiss);
+      window.removeEventListener("scroll", dismiss, true);
+    };
+  }, [contextMenu]);
+
+  const runMenuAction = useCallback((action: () => void) => {
+    setContextMenu(null);
+    action();
+  }, []);
+
+  return (
+    <main className="diff-review-shell">
+      <section className="diff-review-layout">
         <DiffFileList files={state.files} selectedPath={selectedFile?.path ?? null} onSelectFile={selectFile} />
-        <DiffPreviewPanel file={selectedFile} onSelectionChange={setSelection} />
+        <DiffPreviewPanel
+          file={selectedFile}
+          onSelectionChange={setSelection}
+          onContextMenu={handleContextMenu}
+        />
       </section>
+
+      <div className={`diff-review-toast ${statusMessage ? "is-visible" : ""}`}>
+        {statusMessage ?? "右键打开菜单，可复制路径与摘录"}
+      </div>
+
+      {contextMenu ? (
+        <div
+          className="diff-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onContextMenu={(event) => {
+            event.preventDefault();
+          }}
+          onMouseDown={(event) => {
+            event.stopPropagation();
+          }}
+        >
+          <button
+            type="button"
+            className="diff-context-menu__item"
+            onClick={() => {
+              runMenuAction(handleCopyPath);
+            }}
+            disabled={!selectedFile}
+          >
+            复制文件路径
+          </button>
+          <button
+            type="button"
+            className="diff-context-menu__item"
+            onClick={() => {
+              runMenuAction(handleCopyPathWithName);
+            }}
+            disabled={!selectedFile}
+          >
+            复制文件名+路径
+          </button>
+          <button
+            type="button"
+            className="diff-context-menu__item"
+            onClick={() => {
+              runMenuAction(handleCopySelection);
+            }}
+            disabled={!hasSelection}
+          >
+            复制选中文本
+          </button>
+          <button
+            type="button"
+            className="diff-context-menu__item"
+            onClick={() => {
+              runMenuAction(handleCopyFileAndSelection);
+            }}
+            disabled={!selectedFile || !hasSelection}
+          >
+            复制文件信息+选中文本
+          </button>
+        </div>
+      ) : null}
     </main>
   );
 }
