@@ -7,6 +7,7 @@ export const widgetKindSchema = z.enum([
   "widget.react",
   "extension.widget",
   "file.browser",
+  "diff.review",
   "note.markdown"
 ]);
 
@@ -48,6 +49,11 @@ export const fileBrowserWidgetSchema = z.object({
   input: extensionWidgetInputSchema
 });
 
+export const diffReviewWidgetSchema = z.object({
+  kind: z.literal("diff.review"),
+  input: extensionWidgetInputSchema
+});
+
 export const noteMarkdownWidgetSchema = z.object({
   kind: z.literal("note.markdown"),
   input: extensionWidgetInputSchema
@@ -60,6 +66,7 @@ export const widgetDescriptorSchema = z.discriminatedUnion("kind", [
   widgetReactWidgetSchema,
   extensionWidgetSchema,
   fileBrowserWidgetSchema,
+  diffReviewWidgetSchema,
   noteMarkdownWidgetSchema
 ]);
 

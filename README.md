@@ -44,9 +44,10 @@ Lo-Fi Room 是一个 Electron + React 的本地应用，核心目标是把多终
 - `workspace.*`（当前工作区、tab 列表、激活 tab）
 - `fs.*`（选目录/文件、读目录、读文件）
 - `terminal.*`（create/write/resize/kill/list）
-- 内置 `terminal.local`、`file.browser`、`note.markdown` 已迁移为 React + Tailwind webview widget：
+- 内置 `terminal.local`、`file.browser`、`diff.review`、`note.markdown` 已迁移为 React + Tailwind webview widget：
 - `packages/widget-terminal-react` -> `extensions/builtin.workspace/widgets/terminal.local`
 - `packages/widget-file-react` -> `extensions/builtin.workspace/widgets/file.browser`
+- `packages/widget-diff-react` -> `extensions/builtin.workspace/widgets/diff.review`
 - `packages/widget-note-react` -> `extensions/builtin.workspace/widgets/note.markdown`
 - `terminal.local` 已接入 xterm.js（ANSI 渲染、自动 fit、选择复制、右键粘贴/清空）
 
@@ -55,6 +56,7 @@ Lo-Fi Room 是一个 Electron + React 的本地应用，核心目标是把多终
 ```bash
 pnpm build:widget:terminal
 pnpm build:widget:file
+pnpm build:widget:diff
 pnpm build:widget:note
 pnpm build:widgets:builtin
 ```

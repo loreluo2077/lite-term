@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  diffReviewWidgetSchema,
   extensionWidgetInputSchema,
   extensionWidgetSchema,
   fileBrowserWidgetSchema,
@@ -32,6 +33,7 @@ export const widgetTabDescriptorSchema = z.object({
     widgetReactWidgetSchema,
     extensionWidgetSchema,
     fileBrowserWidgetSchema,
+    diffReviewWidgetSchema,
     noteMarkdownWidgetSchema
   ])
 });
@@ -43,6 +45,7 @@ const BUILTIN_WORKSPACE_EXTENSION_ID = "builtin.workspace";
 function mapExtensionWidgetInputToWidgetKind(input: ExtensionWidgetInput): WidgetKind {
   if (input.extensionId !== BUILTIN_WORKSPACE_EXTENSION_ID) return "extension.widget";
   if (input.widgetId === "file.browser") return "file.browser";
+  if (input.widgetId === "diff.review") return "diff.review";
   if (input.widgetId === "widget.markdown") return "note.markdown";
   if (input.widgetId === "note.markdown") return "note.markdown";
   return "extension.widget";
@@ -71,6 +74,7 @@ function normalizeWidgetDescriptor(widget: SharedWidgetDescriptor): SharedWidget
   if (
     widget.kind === "extension.widget" ||
     widget.kind === "file.browser" ||
+    widget.kind === "diff.review" ||
     widget.kind === "note.markdown"
   ) {
     const parsed = extensionWidgetInputSchema.safeParse(widget.input);

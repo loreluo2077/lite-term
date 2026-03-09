@@ -478,6 +478,22 @@ test("builtin webview widgets load runtime and protocol urls", async ({}, testIn
       )
     ).toBeTruthy();
   });
+
+  await runHumanStep(page, testInfo, "open-diff-widget-webview", async () => {
+    await clickPaneWidgetMenuItem(page, 0, "Diff");
+    await expect(page.getByRole("tab", { name: "Diff" }).first()).toBeVisible();
+    await waitForVisibleWidgetRuntimeReady(page);
+    const webviewSources = await page.locator("webview").evaluateAll((nodes) =>
+      nodes
+        .map((node) => node.getAttribute("src"))
+        .filter(Boolean)
+    );
+    expect(
+      webviewSources.some((src) =>
+        src.includes("localterm-extension://builtin.workspace/widgets/diff.review/index.html")
+      )
+    ).toBeTruthy();
+  });
 });
 
 test("terminal startup scripts creation path works", async ({}, testInfo) => {

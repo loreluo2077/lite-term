@@ -12,6 +12,7 @@ export type WidgetDriverInputMap = {
   "widget.react": Record<string, unknown>;
   "extension.widget": ExtensionWidgetInput;
   "file.browser": ExtensionWidgetInput;
+  "diff.review": ExtensionWidgetInput;
   "note.markdown": ExtensionWidgetInput;
 };
 

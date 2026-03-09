@@ -425,6 +425,7 @@ async function writeSessionInputBySessionId(sessionId: string, data: string) {
 function resolveExtensionWidgetKind(input: ExtensionWidgetInput): WidgetKind {
   if (input.extensionId !== "builtin.workspace") return "extension.widget";
   if (input.widgetId === "file.browser") return "file.browser";
+  if (input.widgetId === "diff.review") return "diff.review";
   if (input.widgetId === "widget.markdown") return "note.markdown";
   if (input.widgetId === "note.markdown") return "note.markdown";
   return "extension.widget";
@@ -435,6 +436,7 @@ function toPersistedTabDescriptors(records: WidgetTabRecord[]): WidgetTabDescrip
     const widget = record.widget;
     switch (widget.kind) {
       case "file.browser":
+      case "diff.review":
       case "note.markdown":
       case "extension.widget":
         {
@@ -444,7 +446,7 @@ function toPersistedTabDescriptors(records: WidgetTabRecord[]): WidgetTabDescrip
             id: record.id,
             title: record.title,
             widget: {
-              kind: persistedKind as "extension.widget" | "file.browser" | "note.markdown",
+              kind: persistedKind as "extension.widget" | "file.browser" | "diff.review" | "note.markdown",
               input: parsedInput
             },
             restorePolicy: "manual"
@@ -1765,6 +1767,7 @@ export function App() {
       const widgetNode =
         tab.widget.kind === "extension.widget" ||
         tab.widget.kind === "file.browser" ||
+        tab.widget.kind === "diff.review" ||
         tab.widget.kind === "note.markdown" ? (
           <PluginWidgetPane
             tab={tab}
@@ -2335,6 +2338,20 @@ export function App() {
             }}
           >
             File
+          </button>
+          <button
+            type="button"
+            className="w-full rounded px-2 py-1.5 text-left text-zinc-200 hover:bg-zinc-800"
+            onClick={() => {
+              const paneId = paneWidgetMenu.paneId;
+              setPaneWidgetMenu(null);
+              void openWidgetTab({
+                widgetId: "diff.review",
+                paneId
+              });
+            }}
+          >
+            Diff
           </button>
           <button
             type="button"

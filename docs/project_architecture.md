@@ -20,7 +20,7 @@
 说明：
 
 - `Tab` 负责布局、标题、激活、拖拽、关闭等容器能力
-- `Widget` 负责具体内容渲染与交互（terminal / file browser / markdown）
+- `Widget` 负责具体内容渲染与交互（terminal / file browser / diff review / markdown）
 
 ## 3. 代码分层
 
@@ -78,7 +78,7 @@
 
 - 运行态与渲染逻辑统一使用 `tab.widget.kind/input`
 - 运行态主字段统一为 `widgetKind`
-- 内置 widget：`terminal.local` / `file.browser` / `note.markdown`
+- 内置 widget：`terminal.local` / `file.browser` / `diff.review` / `note.markdown`
 - 外部 widget：`extension.widget`（`extensionId + widgetId + state`）
 - file/note/terminal 由 builtin extension 的 React webview 页面提供（构建输出到 `extensions/builtin.workspace/widgets/*`）
 - terminal 通过 builtin extension 的 `terminal.local` webview + `widgetApi.terminal.*` 驱动

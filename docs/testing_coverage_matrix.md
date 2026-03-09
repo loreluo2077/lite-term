@@ -44,6 +44,7 @@
 | extension terminal webview runtime（builtin extension） | - | `workspace + extension terminal widget...` + `terminal startup scripts creation path works` | 已覆盖（e2e） |
 | note.markdown（builtin widget） | `tests/integration/workspace-schema.test.ts` | `panel split + widget creation + pane close flow` + `builtin webview widgets load runtime and protocol urls` | 已覆盖 |
 | file.browser（builtin widget） | `tests/integration/workspace-schema.test.ts` | `panel split + widget creation + pane close flow` + `builtin webview widgets load runtime and protocol urls` | 已覆盖 |
+| diff.review（builtin widget） | `tests/integration/workspace-schema.test.ts` | `builtin webview widgets load runtime and protocol urls` | 已覆盖 |
 | external widget（kind: extension.widget）协议与归一化 | `tests/integration/workspace-schema.test.ts` | - | 已覆盖（integration） |
 | 旧协议拒绝策略（workspace v2） | `tests/integration/workspace-schema.test.ts` | - | 已覆盖（integration） |
 | webview runtime ready / `localterm-extension://` 加载 | - | `builtin webview widgets load runtime and protocol urls` | 已覆盖（e2e） |

@@ -88,6 +88,42 @@ test("workspace snapshot schema accepts builtin file widget payload", () => {
   assert.equal(parsed.tabs[0]?.widget.kind, "file.browser");
 });
 
+test("workspace snapshot schema accepts builtin diff review widget payload", () => {
+  const parsed = workspaceSnapshotSchema.parse({
+    layout: {
+      schemaVersion: 3,
+      id: "v3-diff",
+      name: "v3-diff",
+      activePaneId: "pane-1",
+      createdAt: 1,
+      updatedAt: 1,
+      root: {
+        id: "pane-1",
+        type: "leaf",
+        tabIds: ["tab-1"],
+        activeTabId: "tab-1"
+      }
+    },
+    tabs: [
+      {
+        id: "tab-1",
+        title: "Diff",
+        widget: {
+          kind: "diff.review",
+          input: {
+            extensionId: "builtin.workspace",
+            widgetId: "diff.review",
+            state: {}
+          }
+        },
+        restorePolicy: "manual"
+      }
+    ]
+  });
+
+  assert.equal(parsed.tabs[0]?.widget.kind, "diff.review");
+});
+
 test("workspace snapshot schema rejects legacy terminal.local descriptor", () => {
   assert.throws(
     () =>
@@ -198,6 +234,48 @@ test("normalizeWorkspaceSnapshot normalizes builtin markdown id", () => {
   assert.deepEqual(normalized.tabs[0]?.widget.input, {
     extensionId: "builtin.workspace",
     widgetId: "note.markdown",
+    state: {}
+  });
+});
+
+test("normalizeWorkspaceSnapshot maps builtin diff.review to dedicated kind", () => {
+  const parsed = workspaceSnapshotSchema.parse({
+    layout: {
+      schemaVersion: 3,
+      id: "normalize-diff",
+      name: "normalize-diff",
+      activePaneId: "pane-1",
+      createdAt: 1,
+      updatedAt: 1,
+      root: {
+        id: "pane-1",
+        type: "leaf",
+        tabIds: ["tab-1"],
+        activeTabId: "tab-1"
+      }
+    },
+    tabs: [
+      {
+        id: "tab-1",
+        title: "Diff",
+        widget: {
+          kind: "extension.widget",
+          input: {
+            extensionId: "builtin.workspace",
+            widgetId: "diff.review",
+            state: {}
+          }
+        },
+        restorePolicy: "manual"
+      }
+    ]
+  });
+
+  const normalized = normalizeWorkspaceSnapshot(parsed);
+  assert.equal(normalized.tabs[0]?.widget.kind, "diff.review");
+  assert.deepEqual(normalized.tabs[0]?.widget.input, {
+    extensionId: "builtin.workspace",
+    widgetId: "diff.review",
     state: {}
   });
 });

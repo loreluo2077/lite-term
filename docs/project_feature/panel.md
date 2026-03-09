@@ -64,7 +64,7 @@ tab 支持拖拽到任意 pane，投放区域包含：
 
 pane 头部快捷入口：
 
-- `+` 菜单：`Terminal` / `File` / `Note` / `Todo`
+- `+` 菜单：`Terminal` / `File` / `Diff` / `Note` / `Todo`
 - `...` 菜单：`Split Horizontal` / `Split Vertical` / `Close Pane`
 
 `+ -> Terminal` 当前行为：

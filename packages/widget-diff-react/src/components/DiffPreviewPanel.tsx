@@ -1,0 +1,179 @@
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { Diff, Hunk, parseDiff, type ChangeData } from "react-diff-view";
+import type { DiffReviewFile, TextSelectionInfo } from "../types";
+
+const OLD_LINE_PREFIX = "line-old-";
+const NEW_LINE_PREFIX = "line-new-";
+
+type DiffPreviewPanelProps = {
+  file: DiffReviewFile | null;
+  onSelectionChange: (selection: TextSelectionInfo | null) => void;
+};
+
+function toLineNumber(change: ChangeData) {
+  if (change.type === "insert") {
+    return {
+      oldLine: null,
+      newLine: change.lineNumber
+    };
+  }
+
+  if (change.type === "delete") {
+    return {
+      oldLine: change.lineNumber,
+      newLine: null
+    };
+  }
+
+  return {
+    oldLine: change.oldLineNumber,
+    newLine: change.newLineNumber
+  };
+}
+
+function readPreferredLineNumber(row: HTMLTableRowElement | null) {
+  if (!row) return null;
+
+  for (const className of row.classList) {
+    if (!className.startsWith(NEW_LINE_PREFIX)) continue;
+    const parsed = Number.parseInt(className.slice(NEW_LINE_PREFIX.length), 10);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+
+  for (const className of row.classList) {
+    if (!className.startsWith(OLD_LINE_PREFIX)) continue;
+    const parsed = Number.parseInt(className.slice(OLD_LINE_PREFIX.length), 10);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+
+  return null;
+}
+
+function closestDiffRow(node: Node | null) {
+  if (!node) return null;
+  if (node instanceof Element) {
+    return node.closest("tr.diff-line") as HTMLTableRowElement | null;
+  }
+  return node.parentElement?.closest("tr.diff-line") as HTMLTableRowElement | null;
+}
+
+function readSelection(container: HTMLElement) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
+
+  const range = selection.getRangeAt(0);
+  if (!container.contains(range.commonAncestorContainer)) return null;
+
+  const text = selection.toString();
+  if (!text.trim()) return null;
+
+  const anchorLine = readPreferredLineNumber(closestDiffRow(selection.anchorNode));
+  const focusLine = readPreferredLineNumber(closestDiffRow(selection.focusNode));
+
+  let lineStart: number | null = null;
+  let lineEnd: number | null = null;
+
+  if (anchorLine != null && focusLine != null) {
+    lineStart = Math.min(anchorLine, focusLine);
+    lineEnd = Math.max(anchorLine, focusLine);
+  } else if (anchorLine != null) {
+    lineStart = anchorLine;
+    lineEnd = anchorLine;
+  } else if (focusLine != null) {
+    lineStart = focusLine;
+    lineEnd = focusLine;
+  }
+
+  return {
+    text,
+    lineStart,
+    lineEnd
+  } as TextSelectionInfo;
+}
+
+export function DiffPreviewPanel({ file, onSelectionChange }: DiffPreviewPanelProps) {
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  const parsedFile = useMemo(() => {
+    if (!file?.patch) return null;
+    const [first] = parseDiff(file.patch, { nearbySequences: "zip" });
+    return first ?? null;
+  }, [file?.patch]);
+
+  const handleSelectionCapture = useCallback(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    onSelectionChange(readSelection(panel));
+  }, [onSelectionChange]);
+
+  const generateLineClassName = useCallback(
+    ({ changes, defaultGenerate }: { changes: ChangeData[]; defaultGenerate: () => string }) => {
+      let oldLine: number | null = null;
+      let newLine: number | null = null;
+
+      for (const change of changes) {
+        const line = toLineNumber(change);
+        if (line.oldLine != null && oldLine == null) oldLine = line.oldLine;
+        if (line.newLine != null && newLine == null) newLine = line.newLine;
+      }
+
+      const custom = [
+        oldLine != null ? `${OLD_LINE_PREFIX}${oldLine}` : "",
+        newLine != null ? `${NEW_LINE_PREFIX}${newLine}` : ""
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      return [defaultGenerate(), custom].filter(Boolean).join(" ");
+    },
+    []
+  );
+
+  useEffect(() => {
+    onSelectionChange(null);
+  }, [file?.path, onSelectionChange]);
+
+  if (!file) {
+    return (
+      <section className="grid min-h-0 place-items-center rounded border border-slate-700 bg-slate-950/70 p-4 text-sm text-slate-400">
+        请先在左侧选择一个文件。
+      </section>
+    );
+  }
+
+  if (!parsedFile) {
+    return (
+      <section className="min-h-0 overflow-auto rounded border border-slate-700 bg-slate-950/70 p-3 text-xs text-slate-300">
+        <p className="m-0 mb-2 text-slate-400">无法解析当前 diff，原始内容如下：</p>
+        <pre className="m-0 whitespace-pre-wrap break-words">{file.patch}</pre>
+      </section>
+    );
+  }
+
+  return (
+    <section
+      ref={panelRef}
+      className="diff-review-panel min-h-0 overflow-auto rounded border border-slate-700 bg-slate-950/70"
+      onMouseUp={handleSelectionCapture}
+      onKeyUp={handleSelectionCapture}
+    >
+      <div className="sticky top-0 z-10 border-b border-slate-800 bg-slate-950/95 px-3 py-2 text-xs text-slate-300">
+        {file.path}
+      </div>
+      <div className="p-2">
+        <Diff
+          viewType="unified"
+          diffType={parsedFile.type}
+          hunks={parsedFile.hunks}
+          generateLineClassName={generateLineClassName}
+        >
+          {(hunks) =>
+            hunks.map((hunk) => (
+              <Hunk key={`${hunk.content}-${hunk.oldStart}-${hunk.newStart}`} hunk={hunk} />
+            ))
+          }
+        </Diff>
+      </div>
+    </section>
+  );
+}

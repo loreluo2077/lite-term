@@ -1,0 +1,33 @@
+@import "tailwindcss";
+@import "react-diff-view/style/index.css";
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  font-family: "IBM Plex Sans", "SF Pro Text", system-ui, -apple-system, sans-serif;
+}
+
+.diff-review-panel .diff {
+  background: transparent;
+  color: #dbeafe;
+}
+
+.diff-review-panel .diff-code {
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.diff-review-panel .diff-gutter {
+  color: #94a3b8;
+}
+
+.diff-review-panel .diff-hunk {
+  background: #111827;
+}
