@@ -28,8 +28,10 @@ body {
 .diff-review-shell {
   position: relative;
   display: grid;
+  grid-template-rows: auto 1fr;
   min-height: 100%;
   padding: 12px;
+  gap: 12px;
   color: var(--text);
   background:
     radial-gradient(circle at 4% 8%, rgba(28, 114, 214, 0.16), transparent 36%),
@@ -57,7 +59,82 @@ body {
   grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
 }
 
+.diff-review-toolbar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow);
+  padding: 10px 12px;
+}
+
+.diff-review-toolbar__meta {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+
+.diff-review-toolbar__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5e7ca2;
+}
+
+.diff-review-toolbar__path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: #284463;
+}
+
+.diff-review-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.diff-review-toolbar__button {
+  height: 34px;
+  border: 1px solid #c6d6ea;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #ffffff, #eef4fb);
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #24415f;
+  transition: border-color 130ms ease, transform 130ms ease, box-shadow 130ms ease;
+}
+
+.diff-review-toolbar__button:hover:enabled {
+  transform: translateY(-1px);
+  border-color: #87abd7;
+  box-shadow: 0 10px 20px rgba(29, 71, 118, 0.12);
+}
+
+.diff-review-toolbar__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 @media (max-width: 920px) {
+  .diff-review-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .diff-review-toolbar__actions {
+    justify-content: flex-end;
+  }
+
   .diff-review-layout {
     grid-template-columns: 1fr;
   }
@@ -101,6 +178,12 @@ body {
   padding: 8px;
   display: grid;
   gap: 8px;
+}
+
+.diff-file-list__empty {
+  padding: 20px 14px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .diff-file-item {

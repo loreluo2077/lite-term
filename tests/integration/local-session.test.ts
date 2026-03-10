@@ -34,6 +34,39 @@ function assertNoOutputMarker(ws: WebSocket, marker: string, durationMs = 1500) 
   });
 }
 
+function waitForControlEvent(
+  ws: WebSocket,
+  expectedType: string,
+  timeoutMs = 10_000
+) {
+  return new Promise<Record<string, unknown>>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out waiting for control event: ${expectedType}`));
+    }, timeoutMs);
+
+    const onMessage = (data: Buffer, isBinary: boolean) => {
+      if (isBinary) return;
+      try {
+        const event = sessionWorkerControlEventSchema.parse(JSON.parse(data.toString()));
+        if (event.type === expectedType) {
+          cleanup();
+          resolve(event as Record<string, unknown>);
+        }
+      } catch {
+        // ignore plain text
+      }
+    };
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      ws.off("message", onMessage as never);
+    };
+
+    ws.on("message", onMessage as never);
+  });
+}
+
 test("local session smoke: create -> ws -> output -> resize -> kill", async () => {
   const controlPlane = new ControlPlaneService();
   const shellOpts = createDeterministicShellOptions();
@@ -158,6 +191,93 @@ test("local sessions remain responsive when websocket attaches later", async () 
     );
   } finally {
     for (const { ws } of sockets) ws.close();
+  }
+});
+
+test("local session startup scripts run after shell ready", async () => {
+  const controlPlane = new ControlPlaneService();
+  const shellOpts = createDeterministicShellOptions();
+
+  const session = await controlPlane.createLocalSession({
+    sessionType: "local",
+    cols: 80,
+    rows: 24,
+    shell: shellOpts.shell,
+    shellArgs: shellOpts.shellArgs,
+    startupScripts: [
+      {
+        id: "boot-1",
+        command: "echo __LT_STARTUP_READY__",
+        delayMs: 50,
+        enabled: true
+      }
+    ]
+  });
+
+  const ws = new WebSocket(`ws://127.0.0.1:${session.port}`);
+  ws.binaryType = "nodebuffer";
+  await new Promise<void>((resolve, reject) => {
+    ws.once("open", () => resolve());
+    ws.once("error", reject);
+  });
+
+  try {
+    const [shellReady, completed, output] = await Promise.all([
+      waitForControlEvent(ws, "shell-ready"),
+      waitForControlEvent(ws, "startup-scripts-complete"),
+      waitForOutput(ws, "__LT_STARTUP_READY__", 15_000)
+    ]);
+
+    assert.equal(shellReady.type, "shell-ready");
+    assert.equal(completed.type, "startup-scripts-complete");
+    assert.match(output, /__LT_STARTUP_READY__/);
+  } finally {
+    await controlPlane.killSession({ sessionId: session.sessionId }).catch(() => undefined);
+    ws.close();
+  }
+});
+
+test("local session broadcasts output to multiple websocket clients", async () => {
+  const controlPlane = new ControlPlaneService();
+  const shellOpts = createDeterministicShellOptions();
+
+  const session = await controlPlane.createLocalSession({
+    sessionType: "local",
+    cols: 80,
+    rows: 24,
+    shell: shellOpts.shell,
+    shellArgs: shellOpts.shellArgs
+  });
+
+  const first = new WebSocket(`ws://127.0.0.1:${session.port}`);
+  const second = new WebSocket(`ws://127.0.0.1:${session.port}`);
+  first.binaryType = "nodebuffer";
+  second.binaryType = "nodebuffer";
+
+  await Promise.all([
+    new Promise<void>((resolve, reject) => {
+      first.once("open", () => resolve());
+      first.once("error", reject);
+    }),
+    new Promise<void>((resolve, reject) => {
+      second.once("open", () => resolve());
+      second.once("error", reject);
+    })
+  ]);
+
+  try {
+    const marker = "__LT_MULTI_CLIENT__";
+    first.send(`echo ${marker}\n`);
+    const [firstOutput, secondOutput] = await Promise.all([
+      waitForOutput(first, marker),
+      waitForOutput(second, marker)
+    ]);
+    assert.match(firstOutput, new RegExp(marker));
+    assert.match(secondOutput, new RegExp(marker));
+  } finally {
+    await controlPlane.killSession({ sessionId: session.sessionId }).catch(() => undefined);
+    first.close();
+    second.close();
   }
 });
 

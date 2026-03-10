@@ -119,6 +119,24 @@ type StartupScriptDraft = {
   enabled: boolean;
 };
 
+type TerminalStartupPresetScript = StartupScriptDraft;
+
+type TerminalStartupPreset = {
+  id: string;
+  name: string;
+  scripts: TerminalStartupPresetScript[];
+  usageCount: number;
+  lastUsedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type EdgePeekWidgetState = {
+  title: string;
+  input: ExtensionWidgetInput;
+  pinned: boolean;
+};
+
 const BULK_STRESS_DEFAULTS = {
   sessions: 4,
   durationSec: 300,
@@ -251,11 +269,17 @@ const DEFAULT_TERMINAL_SIZE = {
   rows: 30
 };
 
+const EDGE_PEEK_SNIPPETS_STORAGE_KEY = "localterm.edge-peek.command-snippets.v1";
+const TERMINAL_STARTUP_PRESETS_STORAGE_KEY = "localterm.terminal-startup-presets.v1";
 const WORKSPACE_AUTOSAVE_DEBOUNCE_MS = 500;
 const WIDGET_REGISTRY_AUTOSAVE_DEBOUNCE_MS = 250;
 
 function makeStartupScriptId() {
   return globalThis.crypto?.randomUUID?.() ?? `script-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function makeStartupPresetId() {
+  return globalThis.crypto?.randomUUID?.() ?? `preset-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
 function sanitizeDelayMs(value: number) {
@@ -272,6 +296,112 @@ function draftsToStartupScripts(drafts: StartupScriptDraft[]): LocalSessionStart
       delayMs: sanitizeDelayMs(entry.delayMs),
       enabled: entry.enabled
     }));
+}
+
+function normalizeStartupPresetScripts(value: unknown): TerminalStartupPresetScript[] {
+  if (!Array.isArray(value)) return [];
+  const scripts: TerminalStartupPresetScript[] = [];
+  value.forEach((item, index) => {
+    if (!item || typeof item !== "object") return;
+    const candidate = item as Partial<StartupScriptDraft>;
+    if (typeof candidate.command !== "string") return;
+    const command = candidate.command.trim();
+    if (!command) return;
+    scripts.push({
+      id:
+        typeof candidate.id === "string" && candidate.id.length > 0
+          ? candidate.id
+          : `preset-script-${index}`,
+      command,
+      delayMs: sanitizeDelayMs(
+        typeof candidate.delayMs === "number" ? candidate.delayMs : Number(candidate.delayMs ?? 0)
+      ),
+      enabled: candidate.enabled !== false
+    });
+  });
+  return scripts;
+}
+
+function normalizeTerminalStartupPresets(raw: unknown): TerminalStartupPreset[] {
+  if (!Array.isArray(raw)) return [];
+  const presets: TerminalStartupPreset[] = [];
+  raw.forEach((item, index) => {
+    if (!item || typeof item !== "object") return;
+    const candidate = item as Partial<TerminalStartupPreset>;
+    const name = typeof candidate.name === "string" ? candidate.name.trim() : "";
+    if (!name) return;
+    const scripts = normalizeStartupPresetScripts(candidate.scripts);
+    if (scripts.length === 0) return;
+    const createdAt =
+      typeof candidate.createdAt === "string" && candidate.createdAt
+        ? candidate.createdAt
+        : new Date().toISOString();
+    presets.push({
+      id:
+        typeof candidate.id === "string" && candidate.id.length > 0
+          ? candidate.id
+          : `preset-${index}`,
+      name,
+      scripts,
+      usageCount:
+        typeof candidate.usageCount === "number" && Number.isFinite(candidate.usageCount)
+          ? Math.max(0, Math.floor(candidate.usageCount))
+          : 0,
+      lastUsedAt:
+        typeof candidate.lastUsedAt === "string" && candidate.lastUsedAt
+          ? candidate.lastUsedAt
+          : null,
+      createdAt,
+      updatedAt:
+        typeof candidate.updatedAt === "string" && candidate.updatedAt
+          ? candidate.updatedAt
+          : createdAt
+    });
+  });
+  return presets.sort((left, right) => left.name.localeCompare(right.name, "zh-CN"));
+}
+
+function clonePresetScriptsForDrafts(
+  scripts: TerminalStartupPresetScript[]
+): StartupScriptDraft[] {
+  return scripts.map((entry) => ({
+    id: makeStartupScriptId(),
+    command: entry.command,
+    delayMs: sanitizeDelayMs(entry.delayMs),
+    enabled: entry.enabled !== false
+  }));
+}
+
+function draftsToPresetScripts(drafts: StartupScriptDraft[]): TerminalStartupPresetScript[] {
+  return drafts
+    .map((entry) => ({
+      id: makeStartupScriptId(),
+      command: entry.command.trim(),
+      delayMs: sanitizeDelayMs(entry.delayMs),
+      enabled: entry.enabled !== false
+    }))
+    .filter((entry) => entry.command.length > 0);
+}
+
+function normalizeEdgePeekWidgetState(raw: unknown): EdgePeekWidgetState | null {
+  if (!raw || typeof raw !== "object") return null;
+  const candidate = raw as Partial<EdgePeekWidgetState>;
+  const parsedInput = parseWidgetInput(candidate.input);
+  if (
+    !parsedInput ||
+    parsedInput.extensionId !== "builtin.workspace" ||
+    parsedInput.widgetId !== "command-snippets"
+  ) {
+    return null;
+  }
+  return {
+    title:
+      typeof candidate.title === "string" && candidate.title.trim().length > 0
+        ? candidate.title.trim()
+        : "Snippets",
+    input: parsedInput,
+    pinned: candidate.pinned === true
+  };
 }
 
 function resolveTerminalStateFromInput(input: Record<string, unknown>): Record<string, unknown> {
@@ -426,6 +556,7 @@ function resolveExtensionWidgetKind(input: ExtensionWidgetInput): WidgetKind {
   if (input.extensionId !== "builtin.workspace") return "extension.widget";
   if (input.widgetId === "file.browser") return "file.browser";
   if (input.widgetId === "diff.review") return "diff.review";
+  if (input.widgetId === "command-snippets") return "command-snippets";
   if (input.widgetId === "widget.markdown") return "note.markdown";
   if (input.widgetId === "note.markdown") return "note.markdown";
   return "extension.widget";
@@ -438,6 +569,7 @@ function toPersistedTabDescriptors(records: WidgetTabRecord[]): WidgetTabDescrip
       case "file.browser":
       case "diff.review":
       case "note.markdown":
+      case "command-snippets":
       case "extension.widget":
         {
           const parsedInput = normalizeExtensionWidgetInput(widget.input);
@@ -446,7 +578,13 @@ function toPersistedTabDescriptors(records: WidgetTabRecord[]): WidgetTabDescrip
             id: record.id,
             title: record.title,
             widget: {
-              kind: persistedKind as "extension.widget" | "file.browser" | "diff.review" | "note.markdown",
+              kind:
+                persistedKind as
+                  | "extension.widget"
+                  | "file.browser"
+                  | "diff.review"
+                  | "note.markdown"
+                  | "command-snippets",
               input: parsedInput
             },
             restorePolicy: "manual"
@@ -573,6 +711,9 @@ export function App() {
   const [terminalStartupScriptsTargetTabId, setTerminalStartupScriptsTargetTabId] = useState<string | null>(null);
   const [pendingTerminalCreation, setPendingTerminalCreation] = useState<PendingTerminalCreation>(null);
   const [terminalStartupScriptDrafts, setTerminalStartupScriptDrafts] = useState<StartupScriptDraft[]>([]);
+  const [terminalStartupPresets, setTerminalStartupPresets] = useState<TerminalStartupPreset[]>([]);
+  const [selectedTerminalStartupPresetId, setSelectedTerminalStartupPresetId] = useState("");
+  const [terminalStartupPresetMessage, setTerminalStartupPresetMessage] = useState("");
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [workspaceSidebarExpanded, setWorkspaceSidebarExpanded] = useState(false);
@@ -602,16 +743,26 @@ export function App() {
   const [dropPreview, setDropPreview] = useState<DropPreview>(null);
   const [tabContextMenu, setTabContextMenu] = useState<TabContextMenuState>(null);
   const [tabInfoDialog, setTabInfoDialog] = useState<TabInfoDialogState>(null);
+  const [, setTabDragInProgress] = useState(false);
   const [parkedTabHost, setParkedTabHost] = useState<HTMLDivElement | null>(null);
   const tabMountHostsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const paneContentHostsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const paneContentRefCallbacksRef = useRef<Map<string, (host: HTMLDivElement | null) => void>>(new Map());
+  const edgePeekRailRef = useRef<HTMLDivElement | null>(null);
   const [paneContentHostVersion, setPaneContentHostVersion] = useState(0);
   const [tabViewportVersion, setTabViewportVersion] = useState(0);
+  const [edgePeekSnippetsState, setEdgePeekSnippetsState] = useState<EdgePeekWidgetState | null>(null);
+  const [edgePeekSnippetsOpen, setEdgePeekSnippetsOpen] = useState(false);
   const tabCounterRef = useRef(0);
   const tabsRef = useRef<WidgetTabRecord[]>([]);
   const workspaceSnapshotCacheRef = useRef<Map<string, WorkspaceSnapshot>>(new Map());
   const restoringWorkspaceRef = useRef(false);
+  const edgePeekCloseTimerRef = useRef<number | null>(null);
+  const setEdgePeekRailHidden = useCallback((hidden: boolean) => {
+    const rail = edgePeekRailRef.current;
+    if (!rail) return;
+    rail.style.display = hidden ? "none" : "";
+  }, []);
   const widgetTemplates = useMemo(() => listWidgetTemplates(), []);
   const leafPaneIds = useMemo(() => listLeafPaneIds(workspace.root), [workspace.root]);
   const workspaceById = useMemo(
@@ -620,15 +771,22 @@ export function App() {
   );
   const tabsSummary = useMemo(
     () =>
-      tabs.map(
-        (entry) =>
-          ({
-            tabId: entry.id,
-            title: entry.title,
-            kind: entry.widget.kind
-          } as WidgetTabSummary)
-      ),
-    [tabs]
+      tabs.map((entry) => {
+        const parsedInput = parseWidgetInput(entry.widget.input);
+        const sessionId = parsedInput
+          ? resolveTerminalSessionIdFromInput(parsedInput)
+          : null;
+        return {
+          tabId: entry.id,
+          title: entry.title,
+          kind: entry.widget.kind,
+          isActive: entry.id === activeTabId,
+          extensionId: parsedInput?.extensionId ?? null,
+          widgetId: parsedInput?.widgetId ?? null,
+          sessionId: sessionId || null
+        } as WidgetTabSummary;
+      }),
+    [activeTabId, tabs]
   );
   const openWorkspaceEntries = useMemo(
     () => workspaceList.workspaces.filter((entry) => !entry.isClosed),
@@ -644,6 +802,34 @@ export function App() {
     if (!entry || !isExtensionTerminalWidgetTab(entry)) return null;
     return entry;
   }, [tabs, terminalStartupScriptsTargetTabId]);
+  const selectedTerminalStartupPreset = useMemo(
+    () =>
+      terminalStartupPresets.find((entry) => entry.id === selectedTerminalStartupPresetId) ?? null,
+    [selectedTerminalStartupPresetId, terminalStartupPresets]
+  );
+  const edgePeekSnippetsTemplate = useMemo(
+    () =>
+      widgetTemplates.find(
+        (entry) =>
+          entry.extensionId === "builtin.workspace" && entry.widgetId === "command-snippets"
+      ) ?? null,
+    [widgetTemplates]
+  );
+  const edgePeekSnippetsTab = useMemo(() => {
+    if (!edgePeekSnippetsState) return null;
+    return {
+      id: "__edge-peek-command-snippets__",
+      widgetKind: "command-snippets" as const,
+      widget: {
+        kind: "command-snippets" as const,
+        input: edgePeekSnippetsState.input
+      },
+      title: edgePeekSnippetsState.title,
+      input: edgePeekSnippetsState.input,
+      status: "idle" as const,
+      wsConnected: false
+    } satisfies WidgetTabRecord;
+  }, [edgePeekSnippetsState]);
 
   const resolvedActivePaneId = useMemo(() => {
     if (getLeafPaneById(workspace.root, workspace.activePaneId)) {
@@ -740,6 +926,18 @@ export function App() {
     );
   }, []);
 
+  const persistTerminalStartupPresets = useCallback((presets: TerminalStartupPreset[]) => {
+    setTerminalStartupPresets(presets);
+    try {
+      window.localStorage.setItem(
+        TERMINAL_STARTUP_PRESETS_STORAGE_KEY,
+        JSON.stringify(presets)
+      );
+    } catch (error) {
+      console.error("terminal startup presets persist failed", error);
+    }
+  }, []);
+
   const removeTerminalStartupScriptDraft = useCallback((id: string) => {
     setTerminalStartupScriptDrafts((prev) => prev.filter((entry) => entry.id !== id));
   }, []);
@@ -748,6 +946,8 @@ export function App() {
     setTerminalStartupScriptsTargetTabId(null);
     setPendingTerminalCreation(null);
     setTerminalStartupScriptDrafts([]);
+    setSelectedTerminalStartupPresetId("");
+    setTerminalStartupPresetMessage("");
   }, []);
 
   const openTerminalStartupScriptsEditor = useCallback((tabId: string) => {
@@ -762,6 +962,8 @@ export function App() {
     setTerminalStartupScriptsTargetTabId(null);
     setPendingTerminalCreation({ paneId, activate });
     setTerminalStartupScriptDrafts([]);
+    setSelectedTerminalStartupPresetId("");
+    setTerminalStartupPresetMessage("");
   }, []);
 
   const createWidgetTabWithDriver = useCallback(async (payload: {
@@ -928,6 +1130,122 @@ export function App() {
     terminalStartupScriptsTargetTabId
   ]);
 
+  const applyTerminalStartupPreset = useCallback(() => {
+    const preset = terminalStartupPresets.find(
+      (entry) => entry.id === selectedTerminalStartupPresetId
+    );
+    if (!preset) return;
+    const hasCurrentDrafts = terminalStartupScriptDrafts.some(
+      (entry) => entry.command.trim().length > 0
+    );
+    if (hasCurrentDrafts) {
+      const confirmed = window.confirm(`Replace current startup scripts with preset "${preset.name}"?`);
+      if (!confirmed) return;
+    }
+    setTerminalStartupScriptDrafts(clonePresetScriptsForDrafts(preset.scripts));
+    const now = new Date().toISOString();
+    const nextPresets = terminalStartupPresets.map((entry) =>
+      entry.id === preset.id
+        ? {
+            ...entry,
+            usageCount: entry.usageCount + 1,
+            lastUsedAt: now,
+            updatedAt: now
+          }
+        : entry
+    );
+    persistTerminalStartupPresets(nextPresets);
+    setTerminalStartupPresetMessage(`Applied preset: ${preset.name}`);
+  }, [
+    persistTerminalStartupPresets,
+    selectedTerminalStartupPresetId,
+    terminalStartupPresets,
+    terminalStartupScriptDrafts
+  ]);
+
+  const saveTerminalStartupPresetAsNew = useCallback(() => {
+    const scripts = draftsToPresetScripts(terminalStartupScriptDrafts);
+    if (scripts.length === 0) {
+      setTerminalStartupPresetMessage("Add at least one startup script before saving a preset.");
+      return;
+    }
+    const suggestedName =
+      terminalStartupPresets.find((entry) => entry.id === selectedTerminalStartupPresetId)?.name ??
+      "";
+    const rawName = window.prompt("Preset name", suggestedName);
+    const name = rawName?.trim() ?? "";
+    if (!name) return;
+    const now = new Date().toISOString();
+    const nextPreset: TerminalStartupPreset = {
+      id: makeStartupPresetId(),
+      name,
+      scripts,
+      usageCount: 0,
+      lastUsedAt: null,
+      createdAt: now,
+      updatedAt: now
+    };
+    const nextPresets = [...terminalStartupPresets, nextPreset].sort((left, right) =>
+      left.name.localeCompare(right.name, "zh-CN")
+    );
+    persistTerminalStartupPresets(nextPresets);
+    setSelectedTerminalStartupPresetId(nextPreset.id);
+    setTerminalStartupPresetMessage(`Saved preset: ${name}`);
+  }, [
+    persistTerminalStartupPresets,
+    selectedTerminalStartupPresetId,
+    terminalStartupPresets,
+    terminalStartupScriptDrafts
+  ]);
+
+  const updateTerminalStartupPreset = useCallback(() => {
+    const preset = terminalStartupPresets.find(
+      (entry) => entry.id === selectedTerminalStartupPresetId
+    );
+    if (!preset) return;
+    const scripts = draftsToPresetScripts(terminalStartupScriptDrafts);
+    if (scripts.length === 0) {
+      setTerminalStartupPresetMessage("Add at least one startup script before updating a preset.");
+      return;
+    }
+    const confirmed = window.confirm(`Update preset "${preset.name}" with current scripts?`);
+    if (!confirmed) return;
+    const now = new Date().toISOString();
+    const nextPresets = terminalStartupPresets.map((entry) =>
+      entry.id === preset.id
+        ? {
+            ...entry,
+            scripts,
+            updatedAt: now
+          }
+        : entry
+    );
+    persistTerminalStartupPresets(nextPresets);
+    setTerminalStartupPresetMessage(`Updated preset: ${preset.name}`);
+  }, [
+    persistTerminalStartupPresets,
+    selectedTerminalStartupPresetId,
+    terminalStartupPresets,
+    terminalStartupScriptDrafts
+  ]);
+
+  const deleteTerminalStartupPreset = useCallback(() => {
+    const preset = terminalStartupPresets.find(
+      (entry) => entry.id === selectedTerminalStartupPresetId
+    );
+    if (!preset) return;
+    const confirmed = window.confirm(`Delete preset "${preset.name}"?`);
+    if (!confirmed) return;
+    const nextPresets = terminalStartupPresets.filter((entry) => entry.id !== preset.id);
+    persistTerminalStartupPresets(nextPresets);
+    setSelectedTerminalStartupPresetId("");
+    setTerminalStartupPresetMessage(`Deleted preset: ${preset.name}`);
+  }, [
+    persistTerminalStartupPresets,
+    selectedTerminalStartupPresetId,
+    terminalStartupPresets
+  ]);
+
   const openWidgetTab = useCallback(async (request: OpenWidgetRequest) => {
     const template = widgetTemplates.find(
       (entry) =>
@@ -956,6 +1274,16 @@ export function App() {
     }
     return await createWidgetTabWithDriver(payload);
   }, [createWidgetTabWithDriver, widgetTemplates]);
+
+  const openEdgePeekSnippetsAsTab = useCallback(() => {
+    if (!edgePeekSnippetsState) return;
+    void openWidgetTab({
+      extensionId: edgePeekSnippetsState.input.extensionId,
+      widgetId: edgePeekSnippetsState.input.widgetId,
+      title: edgePeekSnippetsState.title,
+      state: edgePeekSnippetsState.input.state
+    });
+  }, [edgePeekSnippetsState, openWidgetTab]);
 
   const activateTabFromWidgetApi = useCallback((tabId: string) => {
     const paneId = findPaneIdByTabId(workspace.root, tabId);
@@ -988,10 +1316,164 @@ export function App() {
   }, [tabs]);
 
   useEffect(() => {
+    if (!edgePeekSnippetsTemplate) return;
+    try {
+      const raw = window.localStorage.getItem(EDGE_PEEK_SNIPPETS_STORAGE_KEY);
+      const parsed = raw ? normalizeEdgePeekWidgetState(JSON.parse(raw) as unknown) : null;
+      if (parsed) {
+        setEdgePeekSnippetsState(parsed);
+        setEdgePeekSnippetsOpen(parsed.pinned);
+        return;
+      }
+    } catch (error) {
+      console.error("edge peek widget state load failed", error);
+    }
+    const input = makeWidgetInput(edgePeekSnippetsTemplate, {
+      snippets: []
+    });
+    setEdgePeekSnippetsState({
+      title: "Snippets",
+      input,
+      pinned: false
+    });
+  }, [edgePeekSnippetsTemplate]);
+
+  useEffect(() => {
+    if (!edgePeekSnippetsState) return;
+    try {
+      window.localStorage.setItem(
+        EDGE_PEEK_SNIPPETS_STORAGE_KEY,
+        JSON.stringify(edgePeekSnippetsState)
+      );
+    } catch (error) {
+      console.error("edge peek widget state persist failed", error);
+    }
+  }, [edgePeekSnippetsState]);
+
+  useEffect(() => {
+    return () => {
+      if (edgePeekCloseTimerRef.current != null) {
+        window.clearTimeout(edgePeekCloseTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleGlobalDragStart = () => {
+      setTabDragInProgress(true);
+      setEdgePeekRailHidden(true);
+    };
+    const handleGlobalDragEnd = () => {
+      setTabDragInProgress(false);
+      setEdgePeekRailHidden(false);
+    };
+
+    window.addEventListener("dragstart", handleGlobalDragStart, true);
+    window.addEventListener("dragend", handleGlobalDragEnd, true);
+    window.addEventListener("drop", handleGlobalDragEnd, true);
+
+    return () => {
+      window.removeEventListener("dragstart", handleGlobalDragStart, true);
+      window.removeEventListener("dragend", handleGlobalDragEnd, true);
+      window.removeEventListener("drop", handleGlobalDragEnd, true);
+    };
+  }, [setEdgePeekRailHidden]);
+
+  const cancelEdgePeekClose = useCallback(() => {
+    if (edgePeekCloseTimerRef.current == null) return;
+    window.clearTimeout(edgePeekCloseTimerRef.current);
+    edgePeekCloseTimerRef.current = null;
+  }, []);
+
+  const openEdgePeekSnippets = useCallback(() => {
+    cancelEdgePeekClose();
+    setEdgePeekSnippetsOpen(true);
+  }, [cancelEdgePeekClose]);
+
+  const scheduleEdgePeekSnippetsClose = useCallback(() => {
+    if (edgePeekSnippetsState?.pinned) return;
+    cancelEdgePeekClose();
+    edgePeekCloseTimerRef.current = window.setTimeout(() => {
+      setEdgePeekSnippetsOpen(false);
+      edgePeekCloseTimerRef.current = null;
+    }, 140);
+  }, [cancelEdgePeekClose, edgePeekSnippetsState?.pinned]);
+
+  const updateEdgePeekSnippetsInput = useCallback((input: Record<string, unknown>) => {
+    const parsed = parseWidgetInput(input);
+    if (
+      !parsed ||
+      parsed.extensionId !== "builtin.workspace" ||
+      parsed.widgetId !== "command-snippets"
+    ) {
+      return;
+    }
+    setEdgePeekSnippetsState((prev) =>
+      prev
+        ? {
+            ...prev,
+            input: parsed
+          }
+        : prev
+    );
+  }, []);
+
+  const updateEdgePeekSnippetsTitle = useCallback((title: string) => {
+    const nextTitle = title.trim();
+    if (!nextTitle) return;
+    setEdgePeekSnippetsState((prev) =>
+      prev
+        ? {
+            ...prev,
+            title: nextTitle
+          }
+        : prev
+    );
+  }, []);
+
+  const toggleEdgePeekSnippetsPinned = useCallback(() => {
+    cancelEdgePeekClose();
+    setEdgePeekSnippetsState((prev) => {
+      if (!prev) return prev;
+      const pinned = !prev.pinned;
+      if (!pinned) {
+        setEdgePeekSnippetsOpen(false);
+      } else {
+        setEdgePeekSnippetsOpen(true);
+      }
+      return {
+        ...prev,
+        pinned
+      };
+    });
+  }, [cancelEdgePeekClose]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(TERMINAL_STARTUP_PRESETS_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as unknown;
+      setTerminalStartupPresets(normalizeTerminalStartupPresets(parsed));
+    } catch (error) {
+      console.error("terminal startup presets load failed", error);
+    }
+  }, []);
+
+  useEffect(() => {
     if (!terminalStartupScriptsTargetTabId) return;
     if (terminalStartupScriptsTargetTab) return;
     closeTerminalStartupScriptsDialog();
   }, [closeTerminalStartupScriptsDialog, terminalStartupScriptsTargetTab, terminalStartupScriptsTargetTabId]);
+
+  useEffect(() => {
+    if (!selectedTerminalStartupPresetId) return;
+    const exists = terminalStartupPresets.some(
+      (entry) => entry.id === selectedTerminalStartupPresetId
+    );
+    if (!exists) {
+      setSelectedTerminalStartupPresetId("");
+    }
+  }, [selectedTerminalStartupPresetId, terminalStartupPresets]);
 
   const refreshWorkspaceList = useCallback(async () => {
     const listed = await window.localtermApi.workspace.list();
@@ -1768,7 +2250,8 @@ export function App() {
         tab.widget.kind === "extension.widget" ||
         tab.widget.kind === "file.browser" ||
         tab.widget.kind === "diff.review" ||
-        tab.widget.kind === "note.markdown" ? (
+        tab.widget.kind === "note.markdown" ||
+        tab.widget.kind === "command-snippets" ? (
           <PluginWidgetPane
             tab={tab}
             isActive={tab.id === activeTabId}
@@ -1883,6 +2366,8 @@ export function App() {
         }}
         onDrop={(event) => {
           event.preventDefault();
+          setTabDragInProgress(false);
+          setEdgePeekRailHidden(false);
           const tabId = event.dataTransfer.getData("text/localterm-tab-id");
           const zone = dropPreview?.paneId === node.id ? dropPreview.zone : "center";
           setDropPreview(null);
@@ -1937,10 +2422,14 @@ export function App() {
                     key={tab.id}
                     draggable
                     onDragStart={(event) => {
+                      setTabDragInProgress(true);
+                      setEdgePeekRailHidden(true);
                       event.dataTransfer.setData("text/localterm-tab-id", tab.id);
                       event.dataTransfer.effectAllowed = "move";
                     }}
                     onDragEnd={() => {
+                      setTabDragInProgress(false);
+                      setEdgePeekRailHidden(false);
                       setDropPreview(null);
                     }}
                     onContextMenu={(event) => {
@@ -2300,6 +2789,96 @@ export function App() {
         )}
       </main>
 
+      {edgePeekSnippetsState && edgePeekSnippetsTab ? (
+        <div
+          ref={edgePeekRailRef}
+          className="pointer-events-none fixed right-0 top-1/2 z-30 -translate-y-1/2"
+          aria-label="Edge Peek Widgets"
+        >
+          <div className="flex items-center justify-end gap-2">
+            {edgePeekSnippetsOpen ? (
+              <section
+                className="pointer-events-auto grid h-[min(78vh,720px)] w-[min(460px,calc(100vw-128px))] grid-rows-[auto_1fr] overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-950/96 shadow-2xl backdrop-blur"
+                onMouseEnter={openEdgePeekSnippets}
+                onMouseLeave={scheduleEdgePeekSnippetsClose}
+              >
+                <div className="flex items-center gap-2 border-b border-zinc-800 bg-zinc-900/80 px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold text-zinc-100">
+                      {edgePeekSnippetsState.title}
+                    </div>
+                    <div className="text-[11px] text-zinc-500">Hover panel prototype</div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-[11px] text-zinc-300 hover:bg-zinc-800"
+                    onClick={toggleEdgePeekSnippetsPinned}
+                  >
+                    {edgePeekSnippetsState.pinned ? "Unpin" : "Pin"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-[11px] text-zinc-300 hover:bg-zinc-800"
+                    onClick={openEdgePeekSnippetsAsTab}
+                  >
+                    Open Tab
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 px-0 text-[11px] text-zinc-300 hover:bg-zinc-800"
+                    onClick={() => {
+                      cancelEdgePeekClose();
+                      setEdgePeekSnippetsOpen(false);
+                    }}
+                    aria-label="Close Snippets Peek"
+                  >
+                    ×
+                  </Button>
+                </div>
+                <div className="min-h-0 p-2">
+                  <PluginWidgetPane
+                    tab={edgePeekSnippetsTab}
+                    isActive={edgePeekSnippetsOpen}
+                    workspaceId={workspace.id}
+                    workspaceName={workspace.name}
+                    tabsSummary={tabsSummary}
+                    webviewPreloadUrl={widgetWebviewPreloadUrl}
+                    onUpdateInput={(_, input) => updateEdgePeekSnippetsInput(input)}
+                    onUpdateTitle={(_, title) => updateEdgePeekSnippetsTitle(title)}
+                    onActivateTab={activateTabFromWidgetApi}
+                    onOpenWidget={(request) => {
+                      void openWidgetTab(request);
+                    }}
+                  />
+                </div>
+              </section>
+            ) : null}
+            <button
+              type="button"
+              className={`pointer-events-auto translate-x-[78%] flex h-16 w-12 flex-col items-center justify-center gap-1 rounded-2xl border text-[10px] font-medium tracking-[0.18em] shadow-lg transition-all ${
+                edgePeekSnippetsOpen
+                  ? "border-sky-500 bg-sky-950/85 text-sky-100 translate-x-0"
+                  : "border-zinc-700 bg-zinc-900/88 text-zinc-300 hover:border-zinc-500 hover:translate-x-[66%]"
+              }`}
+              aria-label="Peek Snippets"
+              onMouseEnter={openEdgePeekSnippets}
+              onMouseLeave={scheduleEdgePeekSnippetsClose}
+              onClick={() => {
+                cancelEdgePeekClose();
+                setEdgePeekSnippetsOpen((prev) => !prev);
+              }}
+              title="Peek Snippets"
+            >
+              <span className="text-sm leading-none">⌘</span>
+              <span className="[writing-mode:vertical-rl]">SNIP</span>
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div
         ref={setParkedTabHost}
         className="pointer-events-none fixed inset-0 z-20 overflow-hidden"
@@ -2380,6 +2959,20 @@ export function App() {
             }}
           >
             Todo
+          </button>
+          <button
+            type="button"
+            className="w-full rounded px-2 py-1.5 text-left text-zinc-200 hover:bg-zinc-800"
+            onClick={() => {
+              const paneId = paneWidgetMenu.paneId;
+              setPaneWidgetMenu(null);
+              void openWidgetTab({
+                widgetId: "command-snippets",
+                paneId
+              });
+            }}
+          >
+            Snippets
           </button>
         </div>
       ) : null}
@@ -2666,6 +3259,64 @@ export function App() {
                 : "Choose startup scripts for the new terminal session."}
             </DialogDescription>
           </DialogHeader>
+          <div className="rounded-md border border-zinc-800 bg-zinc-900/60 p-3">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center">
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 text-xs font-medium text-zinc-300">Startup Presets</div>
+                <select
+                  className="h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none"
+                  value={selectedTerminalStartupPresetId}
+                  onChange={(event) => {
+                    setSelectedTerminalStartupPresetId(event.target.value);
+                    setTerminalStartupPresetMessage("");
+                  }}
+                >
+                  <option value="">Select a preset</option>
+                  {terminalStartupPresets.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-wrap gap-2 md:self-end">
+                <Button
+                  variant="outline"
+                  onClick={applyTerminalStartupPreset}
+                  disabled={!selectedTerminalStartupPreset}
+                >
+                  Apply Preset
+                </Button>
+                <Button variant="outline" onClick={saveTerminalStartupPresetAsNew}>
+                  Save As Preset
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={updateTerminalStartupPreset}
+                  disabled={!selectedTerminalStartupPreset}
+                >
+                  Update Preset
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={deleteTerminalStartupPreset}
+                  disabled={!selectedTerminalStartupPreset}
+                >
+                  Delete Preset
+                </Button>
+              </div>
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-3 text-xs text-zinc-400">
+              <span className="truncate">
+                {selectedTerminalStartupPreset
+                  ? `${selectedTerminalStartupPreset.scripts.length} scripts · used ${selectedTerminalStartupPreset.usageCount} times`
+                  : `${terminalStartupPresets.length} presets available`}
+              </span>
+              <span className="truncate text-right text-zinc-500">
+                {terminalStartupPresetMessage || "Save reusable boot sequences for one-click reuse."}
+              </span>
+            </div>
+          </div>
           <div className="max-h-[55vh] space-y-3 overflow-auto">
             {terminalStartupScriptDrafts.map((entry) => (
               <div key={entry.id} className="grid grid-cols-[190px_1fr_40px] gap-2">

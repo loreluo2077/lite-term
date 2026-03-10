@@ -7,8 +7,10 @@ export type DiffReviewFile = {
 };
 
 export type DiffReviewWidgetState = {
+  repoPath: string | null;
   files: DiffReviewFile[];
   selectedPath: string | null;
+  lastLoadedAt?: string | null;
 };
 
 export type TextSelectionInfo = {

@@ -20,31 +20,37 @@ export function DiffFileList({ files, selectedPath, onSelectFile }: DiffFileList
       <div className="diff-file-list__header">
         改动文件 ({files.length})
       </div>
-      <ul className="diff-file-list__items">
-        {files.map((file, index) => {
-          const active = file.path === selectedPath;
-          return (
-            <li key={file.path}>
-              <button
-                type="button"
-                onClick={() => {
-                  onSelectFile(file.path);
-                }}
-                style={{ "--stagger": index } as CSSProperties}
-                className={`diff-file-item ${active ? "is-active" : ""}`}
-              >
-                <span className={statusClass(file.status)}>
-                  {file.status}
-                </span>
-                <span className="diff-file-item__text">
-                  <span className="diff-file-item__name">{basename(file.path)}</span>
-                  <span className="diff-file-item__path">{file.path}</span>
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      {files.length === 0 ? (
+        <div className="diff-file-list__empty">
+          当前仓库没有可展示的改动。
+        </div>
+      ) : (
+        <ul className="diff-file-list__items">
+          {files.map((file, index) => {
+            const active = file.path === selectedPath;
+            return (
+              <li key={file.path}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectFile(file.path);
+                  }}
+                  style={{ "--stagger": index } as CSSProperties}
+                  className={`diff-file-item ${active ? "is-active" : ""}`}
+                >
+                  <span className={statusClass(file.status)}>
+                    {file.status}
+                  </span>
+                  <span className="diff-file-item__text">
+                    <span className="diff-file-item__name">{basename(file.path)}</span>
+                    <span className="diff-file-item__path">{file.path}</span>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </aside>
   );
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { DiffRepoToolbar } from "./components/DiffRepoToolbar";
 import { DiffFileList } from "./components/DiffFileList";
 import { DiffPreviewPanel } from "./components/DiffPreviewPanel";
 import {
@@ -6,7 +7,6 @@ import {
   formatFileInfoAndSelection,
   formatFileReference
 } from "./lib/clipboard";
-import { SAMPLE_DIFF_FILES } from "./sample-data";
 import type {
   DiffFileStatus,
   DiffReviewFile,
@@ -16,8 +16,10 @@ import type {
 import { errorMessage, getWidgetApi } from "./widget-api";
 
 const DEFAULT_STATE: DiffReviewWidgetState = {
-  files: SAMPLE_DIFF_FILES,
-  selectedPath: SAMPLE_DIFF_FILES[0]?.path ?? null
+  repoPath: null,
+  files: [],
+  selectedPath: null,
+  lastLoadedAt: null
 };
 
 type ContextMenuState = {
@@ -51,15 +53,24 @@ function normalizeState(raw: Record<string, unknown> | null | undefined): DiffRe
         .filter((entry): entry is DiffReviewFile => entry != null)
     : [];
 
-  const normalizedFiles = files.length > 0 ? files : SAMPLE_DIFF_FILES;
+  const normalizedFiles = files;
+  const repoPath = typeof source.repoPath === "string" && source.repoPath.trim()
+    ? source.repoPath.trim()
+    : null;
   const selectedPathFromState = typeof source.selectedPath === "string" ? source.selectedPath : null;
   const selectedPath = normalizedFiles.some((file) => file.path === selectedPathFromState)
     ? selectedPathFromState
     : normalizedFiles[0]?.path ?? null;
+  const lastLoadedAt =
+    typeof source.lastLoadedAt === "string" && source.lastLoadedAt
+      ? source.lastLoadedAt
+      : null;
 
   return {
+    repoPath,
     files: normalizedFiles,
-    selectedPath
+    selectedPath,
+    lastLoadedAt
   };
 }
 
@@ -78,6 +89,7 @@ export default function App() {
   const [selection, setSelection] = useState<TextSelectionInfo | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const stateRef = useRef<DiffReviewWidgetState>(DEFAULT_STATE);
   const bootstrappedRef = useRef(false);
 
@@ -85,6 +97,44 @@ export default function App() {
     stateRef.current = next;
     setState(next);
   }, []);
+
+  const replaceState = useCallback(
+    async (nextState: DiffReviewWidgetState) => {
+      applyState(nextState);
+      await api.state.set(nextState as Record<string, unknown>);
+    },
+    [api, applyState]
+  );
+
+  const loadRepoDiff = useCallback(
+    async (repoSourcePath: string) => {
+      setIsRefreshing(true);
+      try {
+        const response = await api.git.readDiff({ path: repoSourcePath });
+        const currentSelectedPath = stateRef.current.selectedPath;
+        const nextState: DiffReviewWidgetState = {
+          repoPath: response.repoPath,
+          files: response.files,
+          selectedPath: response.files.some((file) => file.path === currentSelectedPath)
+            ? currentSelectedPath
+            : response.files[0]?.path ?? null,
+          lastLoadedAt: new Date().toISOString()
+        };
+        await replaceState(nextState);
+        setSelection(null);
+        setStatusMessage(
+          response.files.length > 0
+            ? `已加载 ${response.files.length} 个改动文件`
+            : "当前仓库没有可展示的改动"
+        );
+      } catch (nextError) {
+        setStatusMessage(errorMessage(nextError));
+      } finally {
+        setIsRefreshing(false);
+      }
+    },
+    [api, replaceState]
+  );
 
   useEffect(() => {
     if (bootstrappedRef.current) return;
@@ -107,7 +157,11 @@ export default function App() {
 
         const stored = await api.state.get();
         if (disposed) return;
-        applyState(normalizeState(stored));
+        const normalized = normalizeState(stored);
+        applyState(normalized);
+        if (normalized.repoPath) {
+          void loadRepoDiff(normalized.repoPath);
+        }
       } catch (nextError) {
         if (disposed) return;
         setStatusMessage(errorMessage(nextError));
@@ -118,7 +172,7 @@ export default function App() {
       disposed = true;
       disposeState();
     };
-  }, [api, applyState]);
+  }, [api, applyState, loadRepoDiff]);
 
   useEffect(() => {
     if (!statusMessage) return;
@@ -191,6 +245,22 @@ export default function App() {
     setContextMenu(clampContextMenuPosition(event.clientX, event.clientY));
   }, []);
 
+  const handleChooseRepo = useCallback(async () => {
+    try {
+      const selected = await api.fs.pickDirectory();
+      if (!selected.path) return;
+      await loadRepoDiff(selected.path);
+    } catch (nextError) {
+      setStatusMessage(errorMessage(nextError));
+    }
+  }, [api, loadRepoDiff]);
+
+  const handleRefresh = useCallback(() => {
+    const repoPath = stateRef.current.repoPath;
+    if (!repoPath) return;
+    void loadRepoDiff(repoPath);
+  }, [loadRepoDiff]);
+
   useEffect(() => {
     if (!contextMenu) return;
 
@@ -224,10 +294,23 @@ export default function App() {
 
   return (
     <main className="diff-review-shell">
+      <DiffRepoToolbar
+        repoPath={state.repoPath}
+        isRefreshing={isRefreshing}
+        onChooseRepo={() => {
+          void handleChooseRepo();
+        }}
+        onRefresh={handleRefresh}
+      />
       <section className="diff-review-layout">
         <DiffFileList files={state.files} selectedPath={selectedFile?.path ?? null} onSelectFile={selectFile} />
         <DiffPreviewPanel
           file={selectedFile}
+          emptyMessage={
+            state.repoPath
+              ? "当前仓库没有可展示的 diff，或还没有选择文件。"
+              : "先选择一个 Git 仓库目录。"
+          }
           onSelectionChange={setSelection}
           onContextMenu={handleContextMenu}
         />

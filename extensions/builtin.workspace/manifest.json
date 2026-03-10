@@ -9,7 +9,8 @@
       "file.browser",
       "diff.review",
       "note.markdown",
-      "todo.react"
+      "todo.react",
+      "command-snippets"
     ],
     "commands": [],
     "widgets": [
@@ -17,13 +18,15 @@
       "file.browser",
       "diff.review",
       "note.markdown",
-      "todo.react"
+      "todo.react",
+      "command-snippets"
     ]
   },
   "permissions": [
     "workspace.read",
     "workspace.write",
     "fs.read",
+    "git.read",
     "session.list",
     "session.create",
     "session.kill"

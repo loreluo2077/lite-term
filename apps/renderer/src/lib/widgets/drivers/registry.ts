@@ -29,3 +29,4 @@ registerWidgetDriver(createNoopWidgetDriver("widget.react"));
 registerWidgetDriver(createNoopWidgetDriver("file.browser"));
 registerWidgetDriver(createNoopWidgetDriver("diff.review"));
 registerWidgetDriver(createNoopWidgetDriver("note.markdown"));
+registerWidgetDriver(createNoopWidgetDriver("command-snippets"));

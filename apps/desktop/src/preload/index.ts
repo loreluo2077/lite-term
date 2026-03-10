@@ -20,7 +20,9 @@ import {
   type FsReadDirRequest,
   type FsReadDirResponse,
   type FsReadFileRequest,
-  type FsReadFileResponse
+  type FsReadFileResponse,
+  type GitReadDiffRequest,
+  type GitReadDiffResponse
 } from "@localterm/shared";
 
 const api = {
@@ -57,6 +59,10 @@ const api = {
       ipcRenderer.invoke(IPC_CHANNELS.fileReadDir, payload) as Promise<FsReadDirResponse>,
     readFile: (payload: FsReadFileRequest) =>
       ipcRenderer.invoke(IPC_CHANNELS.fileReadFile, payload) as Promise<FsReadFileResponse>
+  },
+  git: {
+    readDiff: (payload: GitReadDiffRequest) =>
+      ipcRenderer.invoke(IPC_CHANNELS.gitReadDiff, payload) as Promise<GitReadDiffResponse>
   },
   extension: {
     getHostConfig: () =>

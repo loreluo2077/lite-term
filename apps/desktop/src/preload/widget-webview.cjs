@@ -81,6 +81,9 @@ const widgetApi = {
     readDir: (payload) => callHost("fs.readDir", payload),
     readFile: (payload) => callHost("fs.readFile", payload)
   },
+  git: {
+    readDiff: (payload) => callHost("git.readDiff", payload)
+  },
   terminal: {
     create: (payload) => callHost("terminal.create", payload),
     write: (payload) => callHost("terminal.write", payload),

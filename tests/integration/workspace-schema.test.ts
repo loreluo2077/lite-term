@@ -124,6 +124,42 @@ test("workspace snapshot schema accepts builtin diff review widget payload", () 
   assert.equal(parsed.tabs[0]?.widget.kind, "diff.review");
 });
 
+test("workspace snapshot schema accepts builtin command snippets widget payload", () => {
+  const parsed = workspaceSnapshotSchema.parse({
+    layout: {
+      schemaVersion: 3,
+      id: "v3-snippets",
+      name: "v3-snippets",
+      activePaneId: "pane-1",
+      createdAt: 1,
+      updatedAt: 1,
+      root: {
+        id: "pane-1",
+        type: "leaf",
+        tabIds: ["tab-1"],
+        activeTabId: "tab-1"
+      }
+    },
+    tabs: [
+      {
+        id: "tab-1",
+        title: "Snippets",
+        widget: {
+          kind: "command-snippets",
+          input: {
+            extensionId: "builtin.workspace",
+            widgetId: "command-snippets",
+            state: {}
+          }
+        },
+        restorePolicy: "manual"
+      }
+    ]
+  });
+
+  assert.equal(parsed.tabs[0]?.widget.kind, "command-snippets");
+});
+
 test("workspace snapshot schema rejects legacy terminal.local descriptor", () => {
   assert.throws(
     () =>
@@ -276,6 +312,48 @@ test("normalizeWorkspaceSnapshot maps builtin diff.review to dedicated kind", ()
   assert.deepEqual(normalized.tabs[0]?.widget.input, {
     extensionId: "builtin.workspace",
     widgetId: "diff.review",
+    state: {}
+  });
+});
+
+test("normalizeWorkspaceSnapshot maps builtin command-snippets to dedicated kind", () => {
+  const parsed = workspaceSnapshotSchema.parse({
+    layout: {
+      schemaVersion: 3,
+      id: "normalize-snippets",
+      name: "normalize-snippets",
+      activePaneId: "pane-1",
+      createdAt: 1,
+      updatedAt: 1,
+      root: {
+        id: "pane-1",
+        type: "leaf",
+        tabIds: ["tab-1"],
+        activeTabId: "tab-1"
+      }
+    },
+    tabs: [
+      {
+        id: "tab-1",
+        title: "Snippets",
+        widget: {
+          kind: "extension.widget",
+          input: {
+            extensionId: "builtin.workspace",
+            widgetId: "command-snippets",
+            state: {}
+          }
+        },
+        restorePolicy: "manual"
+      }
+    ]
+  });
+
+  const normalized = normalizeWorkspaceSnapshot(parsed);
+  assert.equal(normalized.tabs[0]?.widget.kind, "command-snippets");
+  assert.deepEqual(normalized.tabs[0]?.widget.input, {
+    extensionId: "builtin.workspace",
+    widgetId: "command-snippets",
     state: {}
   });
 });

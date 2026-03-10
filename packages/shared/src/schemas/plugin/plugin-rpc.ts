@@ -6,6 +6,7 @@ export const extensionPermissionSchema = z.enum([
   "session.list",
   "session.create",
   "session.kill",
+  "git.read",
   "network.request",
   "fs.read",
   "fs.write",

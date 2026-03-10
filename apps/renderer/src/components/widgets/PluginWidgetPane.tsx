@@ -29,11 +29,11 @@ type Props = {
 type WebviewLikeElement = HTMLElement & {
   send: (channel: string, ...args: unknown[]) => void;
   addEventListener: (
-    type: "ipc-message" | "dom-ready",
+    type: "ipc-message" | "dom-ready" | "did-stop-loading",
     listener: (event: { channel: string; args: unknown[] }) => void
   ) => void;
   removeEventListener: (
-    type: "ipc-message" | "dom-ready",
+    type: "ipc-message" | "dom-ready" | "did-stop-loading",
     listener: (event: { channel: string; args: unknown[] }) => void
   ) => void;
 };
@@ -346,6 +346,18 @@ export function PluginWidgetPane({
               )
             };
           }
+          case "git.readDiff": {
+            if (!hasPermission("git.read")) {
+              return buildErrorResponse(requestId, "PERMISSION_DENIED", "git.read permission is required");
+            }
+            return {
+              requestId,
+              ok: true,
+              result: await window.localtermApi.git.readDiff(
+                params as Parameters<typeof window.localtermApi.git.readDiff>[0]
+              )
+            };
+          }
           case "terminal.create":
             if (!hasPermission("session.create")) {
               return buildErrorResponse(requestId, "PERMISSION_DENIED", "session.create permission is required");
@@ -463,13 +475,18 @@ export function PluginWidgetPane({
   useEffect(() => {
     const webview = webviewRef.current;
     if (!webview) return;
+    const fallbackTimer = window.setTimeout(() => {
+      setIsWebviewReady(true);
+    }, 1200);
 
-    const onDomReady = () => {
+    const markReady = () => {
+      window.clearTimeout(fallbackTimer);
       setIsWebviewReady(true);
     };
 
     const onIpcMessage = (event: { channel: string; args: unknown[] }) => {
       if (event.channel !== "widget-api-request") return;
+      setIsWebviewReady(true);
       const payload = event.args[0] as WidgetApiRequest | undefined;
       if (!payload) return;
       void handleApiRequest(payload).then((response) => {
@@ -477,11 +494,14 @@ export function PluginWidgetPane({
       });
     };
 
-    webview.addEventListener("dom-ready", onDomReady as never);
+    webview.addEventListener("dom-ready", markReady as never);
+    webview.addEventListener("did-stop-loading", markReady as never);
     webview.addEventListener("ipc-message", onIpcMessage as never);
 
     return () => {
-      webview.removeEventListener("dom-ready", onDomReady as never);
+      window.clearTimeout(fallbackTimer);
+      webview.removeEventListener("dom-ready", markReady as never);
+      webview.removeEventListener("did-stop-loading", markReady as never);
       webview.removeEventListener("ipc-message", onIpcMessage as never);
       setIsWebviewReady(false);
     };
@@ -491,13 +511,10 @@ export function PluginWidgetPane({
     if (!isWebviewReady) return;
     const webview = webviewRef.current;
     if (!webview || !widgetInput) return;
-    const sent = trySendWebview(webview, "widget-host-event", {
+    trySendWebview(webview, "widget-host-event", {
       topic: "state.changed",
       state: widgetInput.state
     });
-    if (!sent) {
-      setIsWebviewReady(false);
-    }
   }, [isWebviewReady, widgetInput]);
 
   if (!widgetInput) {

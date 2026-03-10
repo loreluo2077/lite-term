@@ -5,6 +5,7 @@ import {
   extensionWidgetSchema,
   fileBrowserWidgetSchema,
   noteMarkdownWidgetSchema,
+  commandSnippetsWidgetSchema,
   terminalSshWidgetSchema,
   webPageWidgetSchema,
   webBrowserWidgetSchema,
@@ -34,7 +35,8 @@ export const widgetTabDescriptorSchema = z.object({
     extensionWidgetSchema,
     fileBrowserWidgetSchema,
     diffReviewWidgetSchema,
-    noteMarkdownWidgetSchema
+    noteMarkdownWidgetSchema,
+    commandSnippetsWidgetSchema
   ])
 });
 
@@ -46,6 +48,7 @@ function mapExtensionWidgetInputToWidgetKind(input: ExtensionWidgetInput): Widge
   if (input.extensionId !== BUILTIN_WORKSPACE_EXTENSION_ID) return "extension.widget";
   if (input.widgetId === "file.browser") return "file.browser";
   if (input.widgetId === "diff.review") return "diff.review";
+  if (input.widgetId === "command-snippets") return "command-snippets";
   if (input.widgetId === "widget.markdown") return "note.markdown";
   if (input.widgetId === "note.markdown") return "note.markdown";
   return "extension.widget";
@@ -75,7 +78,8 @@ function normalizeWidgetDescriptor(widget: SharedWidgetDescriptor): SharedWidget
     widget.kind === "extension.widget" ||
     widget.kind === "file.browser" ||
     widget.kind === "diff.review" ||
-    widget.kind === "note.markdown"
+    widget.kind === "note.markdown" ||
+    widget.kind === "command-snippets"
   ) {
     const parsed = extensionWidgetInputSchema.safeParse(widget.input);
     if (parsed.success) {

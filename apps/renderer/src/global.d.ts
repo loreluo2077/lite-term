@@ -16,6 +16,8 @@ import type {
   FsPickDirectoryResponse,
   FsPickFileRequest,
   FsPickFileResponse,
+  GitReadDiffRequest,
+  GitReadDiffResponse,
   FsReadDirRequest,
   FsReadDirResponse,
   FsReadFileRequest,
@@ -63,6 +65,9 @@ declare global {
         pickFile(payload?: FsPickFileRequest): Promise<FsPickFileResponse>;
         readDir(payload: FsReadDirRequest): Promise<FsReadDirResponse>;
         readFile(payload: FsReadFileRequest): Promise<FsReadFileResponse>;
+      };
+      git: {
+        readDiff(payload: GitReadDiffRequest): Promise<GitReadDiffResponse>;
       };
       extension: {
         getHostConfig(): Promise<ExtensionHostConfig>;

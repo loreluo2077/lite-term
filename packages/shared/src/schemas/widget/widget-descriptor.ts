@@ -8,7 +8,8 @@ export const widgetKindSchema = z.enum([
   "extension.widget",
   "file.browser",
   "diff.review",
-  "note.markdown"
+  "note.markdown",
+  "command-snippets"
 ]);
 
 export const genericWidgetInputSchema = z.record(z.string(), z.unknown());
@@ -59,6 +60,11 @@ export const noteMarkdownWidgetSchema = z.object({
   input: extensionWidgetInputSchema
 });
 
+export const commandSnippetsWidgetSchema = z.object({
+  kind: z.literal("command-snippets"),
+  input: extensionWidgetInputSchema
+});
+
 export const widgetDescriptorSchema = z.discriminatedUnion("kind", [
   terminalSshWidgetSchema,
   webPageWidgetSchema,
@@ -67,7 +73,8 @@ export const widgetDescriptorSchema = z.discriminatedUnion("kind", [
   extensionWidgetSchema,
   fileBrowserWidgetSchema,
   diffReviewWidgetSchema,
-  noteMarkdownWidgetSchema
+  noteMarkdownWidgetSchema,
+  commandSnippetsWidgetSchema
 ]);
 
 export type WidgetKind = z.infer<typeof widgetKindSchema>;

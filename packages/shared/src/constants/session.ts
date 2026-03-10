@@ -27,7 +27,8 @@ export const IPC_CHANNELS = {
   filePickDirectory: "file:pickDirectory",
   filePickFile: "file:pickFile",
   fileReadDir: "file:readDir",
-  fileReadFile: "file:readFile"
+  fileReadFile: "file:readFile",
+  gitReadDiff: "git:readDiff"
 } as const;
 
 export const DEFAULTS = {

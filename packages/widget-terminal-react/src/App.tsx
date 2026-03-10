@@ -25,6 +25,15 @@ type Disposable = {
   dispose: () => void;
 };
 
+type BootPhase =
+  | "starting-session"
+  | "connecting-socket"
+  | "waiting-shell"
+  | "running-startup"
+  | "ready"
+  | "error"
+  | "exited";
+
 const DEFAULT_STATE: TerminalWidgetState = {
   cols: 120,
   rows: 30,
@@ -62,12 +71,71 @@ function clampContextPosition(clientX: number, clientY: number) {
   return { x, y };
 }
 
+function phaseProgress(phase: BootPhase) {
+  switch (phase) {
+    case "starting-session":
+      return 16;
+    case "connecting-socket":
+      return 38;
+    case "waiting-shell":
+      return 68;
+    case "running-startup":
+      return 88;
+    case "ready":
+      return 100;
+    case "error":
+      return 100;
+    case "exited":
+      return 100;
+  }
+}
+
+function phaseLabel(phase: BootPhase) {
+  switch (phase) {
+    case "starting-session":
+      return "Starting session";
+    case "connecting-socket":
+      return "Connecting terminal";
+    case "waiting-shell":
+      return "Waiting for shell prompt";
+    case "running-startup":
+      return "Running startup scripts";
+    case "ready":
+      return "Terminal ready";
+    case "error":
+      return "Terminal error";
+    case "exited":
+      return "Terminal exited";
+  }
+}
+
+function phaseHint(phase: BootPhase, hasStartupScripts: boolean) {
+  switch (phase) {
+    case "starting-session":
+      return "Creating worker and PTY session";
+    case "connecting-socket":
+      return "Attaching web terminal transport";
+    case "waiting-shell":
+      return hasStartupScripts ? "Waiting until shell prompt is visible before boot scripts" : "Waiting until shell prompt is visible";
+    case "running-startup":
+      return "Boot commands are queued after shell ready";
+    case "ready":
+      return hasStartupScripts ? "Shell and startup scripts completed" : "Shell prompt detected";
+    case "error":
+      return "Check terminal output for details";
+    case "exited":
+      return "Session closed";
+  }
+}
+
 export default function App() {
   const api = useMemo(() => getWidgetApi(), []);
   const [, setState] = useState<TerminalWidgetState>(DEFAULT_STATE);
   const stateRef = useRef<TerminalWidgetState>(DEFAULT_STATE);
   const [hasSelection, setHasSelection] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+  const [bootPhase, setBootPhase] = useState<BootPhase>("starting-session");
+  const [progressVisible, setProgressVisible] = useState(true);
 
   const hostRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -77,6 +145,7 @@ export default function App() {
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const resizeTimerRef = useRef<number | null>(null);
   const terminalDisposablesRef = useRef<Disposable[]>([]);
+  const readyHideTimerRef = useRef<number | null>(null);
 
   const applyState = useCallback((next: TerminalWidgetState) => {
     stateRef.current = next;
@@ -111,6 +180,28 @@ export default function App() {
     }
     wsRef.current = null;
   }, []);
+
+  const clearReadyHideTimer = useCallback(() => {
+    if (readyHideTimerRef.current != null) {
+      window.clearTimeout(readyHideTimerRef.current);
+      readyHideTimerRef.current = null;
+    }
+  }, []);
+
+  const transitionBootPhase = useCallback(
+    (next: BootPhase) => {
+      clearReadyHideTimer();
+      setBootPhase(next);
+      setProgressVisible(true);
+      if (next === "ready") {
+        readyHideTimerRef.current = window.setTimeout(() => {
+          setProgressVisible(false);
+          readyHideTimerRef.current = null;
+        }, 1400);
+      }
+    },
+    [clearReadyHideTimer]
+  );
 
   const writeInput = useCallback(
     async (data: string) => {
@@ -169,6 +260,7 @@ export default function App() {
     (port: number) => {
       if (!port) return;
       closeWs();
+      transitionBootPhase("connecting-socket");
 
       const ws = new WebSocket(`ws://127.0.0.1:${port}`);
       ws.binaryType = "arraybuffer";
@@ -176,6 +268,7 @@ export default function App() {
       ws.addEventListener("open", () => {
         wsRef.current = ws;
         void patchState({ wsConnected: true }).catch(() => undefined);
+        transitionBootPhase("waiting-shell");
         scheduleTerminalSizeSync();
       });
 
@@ -189,6 +282,7 @@ export default function App() {
               type?: string;
               exitCode?: number | null;
               message?: string;
+              detectedBy?: "prompt" | "fallback";
             };
             if (control.type === "ready") {
               void patchState({ status: "ready" }).catch(() => undefined);
@@ -197,11 +291,37 @@ export default function App() {
             if (control.type === "exit") {
               appendSystemLine(`[session exited] code=${control.exitCode ?? "null"}`);
               void patchState({ status: "exited", wsConnected: false }).catch(() => undefined);
+              transitionBootPhase("exited");
               return;
             }
             if (control.type === "error") {
               appendSystemLine(`[session error] ${control.message ?? "unknown"}`);
               void patchState({ status: "error", wsConnected: false }).catch(() => undefined);
+              transitionBootPhase("error");
+              return;
+            }
+            if (control.type === "startup-scripts-error") {
+              appendSystemLine(`[startup scripts error] ${control.message ?? "unknown"}`);
+              transitionBootPhase("error");
+              return;
+            }
+            if (control.type === "shell-ready") {
+              if (stateRef.current.startupScripts.length === 0) {
+                transitionBootPhase("ready");
+              } else {
+                transitionBootPhase("waiting-shell");
+              }
+              return;
+            }
+            if (control.type === "startup-scripts-started") {
+              transitionBootPhase("running-startup");
+              if (control.detectedBy === "fallback") {
+                appendSystemLine("[startup scripts] prompt not detected, fallback run");
+              }
+              return;
+            }
+            if (control.type === "startup-scripts-complete") {
+              transitionBootPhase("ready");
               return;
             }
           } catch {
@@ -212,7 +332,8 @@ export default function App() {
         }
 
         if (event.data instanceof ArrayBuffer) {
-          terminal.write(decoder.decode(event.data));
+          const text = decoder.decode(event.data);
+          terminal.write(text);
         }
       });
 
@@ -225,9 +346,10 @@ export default function App() {
 
       ws.addEventListener("error", () => {
         appendSystemLine("[websocket error]");
+        transitionBootPhase("error");
       });
     },
-    [appendSystemLine, closeWs, patchState, scheduleTerminalSizeSync]
+    [appendSystemLine, closeWs, patchState, scheduleTerminalSizeSync, transitionBootPhase]
   );
 
   const ensureSession = useCallback(async () => {
@@ -257,6 +379,7 @@ export default function App() {
       }
     }
 
+    transitionBootPhase("starting-session");
     const created = await api.terminal.create({
       cols: wantedCols,
       rows: wantedRows,
@@ -273,7 +396,7 @@ export default function App() {
       wsConnected: false
     });
     connectWs(created.port);
-  }, [api, connectWs, patchState]);
+  }, [api, connectWs, patchState, transitionBootPhase]);
 
   const initTerminal = useCallback(() => {
     if (terminalRef.current || !hostRef.current) return;
@@ -415,7 +538,6 @@ export default function App() {
         window.clearTimeout(resizeTimerRef.current);
         resizeTimerRef.current = null;
       }
-
       resizeObserverRef.current?.disconnect();
       resizeObserverRef.current = null;
 
@@ -432,9 +554,22 @@ export default function App() {
       terminalRef.current = null;
       fitAddonRef.current = null;
 
+      clearReadyHideTimer();
       closeWs();
     };
-  }, [api, appendSystemLine, applyState, closeWs, ensureSession, initTerminal, scheduleTerminalSizeSync]);
+  }, [api, appendSystemLine, applyState, clearReadyHideTimer, closeWs, ensureSession, initTerminal, scheduleTerminalSizeSync]);
+
+  const progress = phaseProgress(bootPhase);
+  const progressSteps = [
+    { key: "starting-session", label: "Session" },
+    { key: "connecting-socket", label: "Socket" },
+    { key: "waiting-shell", label: "Shell" },
+    { key: "running-startup", label: "Scripts" },
+    { key: "ready", label: "Ready" }
+  ] as const;
+  const stepIndex = progressSteps.findIndex((entry) => entry.key === bootPhase);
+  const activeStepIndex = stepIndex >= 0 ? stepIndex : bootPhase === "error" || bootPhase === "exited" ? 4 : 0;
+  const hasStartupScripts = stateRef.current.startupScripts.length > 0;
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -452,9 +587,51 @@ export default function App() {
   return (
     <main className="relative h-full min-h-0 bg-[radial-gradient(circle_at_top_left,rgba(30,58,138,0.22),rgba(2,6,23,1)_60%)] p-1.5 text-zinc-100">
       <section className="relative h-full min-h-0 overflow-hidden rounded-md bg-[#04070f] shadow-[0_8px_24px_rgba(2,6,23,0.4)]">
+        {progressVisible ? (
+          <div className="pointer-events-none absolute inset-x-3 top-3 z-20 rounded-xl border border-slate-800/80 bg-slate-950/88 px-3 py-2 shadow-[0_12px_28px_rgba(2,6,23,0.35)] backdrop-blur">
+            <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.18em] text-slate-400">
+              <span>{phaseLabel(bootPhase)}</span>
+              <span className="font-semibold text-slate-200">{progress}%</span>
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800">
+              <div
+                className={`h-full rounded-full transition-[width] duration-300 ${
+                  bootPhase === "error"
+                    ? "bg-rose-500"
+                    : bootPhase === "exited"
+                      ? "bg-amber-400"
+                      : "bg-[linear-gradient(90deg,#38bdf8_0%,#60a5fa_55%,#34d399_100%)]"
+                }`}
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              {progressSteps.map((step, index) => {
+                const active = index <= activeStepIndex;
+                const muted = step.key === "running-startup" && !hasStartupScripts;
+                return (
+                  <div
+                    key={step.key}
+                    className={`flex items-center gap-1.5 text-[10px] ${
+                      active ? "text-slate-100" : "text-slate-500"
+                    } ${muted ? "opacity-45" : ""}`}
+                  >
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        active ? "bg-sky-400" : "bg-slate-700"
+                      }`}
+                    />
+                    <span>{step.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-1 text-[11px] text-slate-400">{phaseHint(bootPhase, hasStartupScripts)}</div>
+          </div>
+        ) : null}
         <div
           ref={hostRef}
-          className="terminal-host h-full w-full"
+          className={`terminal-host h-full w-full ${progressVisible ? "pt-20" : ""}`}
           onContextMenu={(event) => {
             event.preventDefault();
             const position = clampContextPosition(event.clientX, event.clientY);

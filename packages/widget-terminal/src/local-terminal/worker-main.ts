@@ -4,6 +4,7 @@
 import process from "node:process";
 import { WebSocketServer, type WebSocket } from "ws";
 import {
+  type SessionWorkerControlEvent,
   type WorkerChildToParentMessage,
   type WorkerParentToChildMessage,
   workerBootstrapMessageSchema,
@@ -11,6 +12,7 @@ import {
   workerResizeMessageSchema
 } from "@localterm/shared";
 import { LocalSessionAdapter } from "./local-session-adapter";
+import { StartupScriptRunner } from "./startup-script-runner";
 
 type RuntimeState = {
   sessionId: string;
@@ -18,9 +20,11 @@ type RuntimeState = {
   host: string;
   server: WebSocketServer;
   adapter: LocalSessionAdapter;
+  startupScriptRunner: StartupScriptRunner;
   ready: boolean;
   exited: boolean;
-  activeSocket: WebSocket | null;
+  sockets: Set<WebSocket>;
+  replayableEvents: SessionWorkerControlEvent[];
 };
 
 let runtime: RuntimeState | null = null;
@@ -32,18 +36,35 @@ function sendParent(msg: WorkerChildToParentMessage) {
   }
 }
 
-function sendSocketEvent(event: object) {
-  if (!runtime?.activeSocket || runtime.activeSocket.readyState !== runtime.activeSocket.OPEN) {
-    return;
+function broadcastSocketEvent(event: SessionWorkerControlEvent) {
+  if (!runtime) return;
+  const serialized = JSON.stringify(event);
+  for (const socket of runtime.sockets) {
+    if (socket.readyState !== socket.OPEN) continue;
+    socket.send(serialized);
   }
-  runtime.activeSocket.send(JSON.stringify(event));
 }
 
-function sendSocketOutput(chunk: Uint8Array) {
-  if (!runtime?.activeSocket || runtime.activeSocket.readyState !== runtime.activeSocket.OPEN) {
-    return;
+function sendSocketEvent(socket: WebSocket, event: SessionWorkerControlEvent) {
+  if (socket.readyState !== socket.OPEN) return;
+  socket.send(JSON.stringify(event));
+}
+
+function emitControlEvent(event: SessionWorkerControlEvent) {
+  if (runtime && event.type !== "ready" && event.type !== "exit") {
+    runtime.replayableEvents = runtime.replayableEvents.filter((entry) => entry.type !== event.type);
+    runtime.replayableEvents.push(event);
   }
-  runtime.activeSocket.send(Buffer.from(chunk));
+  broadcastSocketEvent(event);
+}
+
+function broadcastSocketOutput(chunk: Uint8Array) {
+  if (!runtime) return;
+  const payload = Buffer.from(chunk);
+  for (const socket of runtime.sockets) {
+    if (socket.readyState !== socket.OPEN) continue;
+    socket.send(payload);
+  }
 }
 
 function closeServer() {
@@ -102,34 +123,43 @@ async function initRuntime(message: unknown) {
     });
   });
 
+  const startupScriptRunner = new StartupScriptRunner({
+    sessionId,
+    scripts: request.startupScripts ?? [],
+    write: (data) => {
+      adapter.write(data);
+    },
+    emitControl: (event) => {
+      emitControlEvent(event);
+    }
+  });
+
   runtime = {
     sessionId,
     port,
     host,
     server,
     adapter,
+    startupScriptRunner,
     ready: false,
     exited: false,
-    activeSocket: null
+    sockets: new Set(),
+    replayableEvents: []
   };
 
   server.on("connection", (socket) => {
-    if (runtime?.activeSocket && runtime.activeSocket !== socket) {
-      try {
-        runtime.activeSocket.close(1000, "replaced by newer client");
-      } catch {
-        // ignore
-      }
-    }
-    runtime!.activeSocket = socket;
+    runtime?.sockets.add(socket);
 
     if (runtime?.ready) {
-      sendSocketEvent({
+      sendSocketEvent(socket, {
         type: "ready",
         sessionId,
         pid: process.pid,
         port
       });
+      for (const event of runtime.replayableEvents) {
+        sendSocketEvent(socket, event);
+      }
     }
 
     socket.on("message", (data, isBinary) => {
@@ -142,7 +172,7 @@ async function initRuntime(message: unknown) {
         }
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
-        sendSocketEvent({
+        emitControlEvent({
           type: "error",
           sessionId,
           message: err.message
@@ -151,14 +181,13 @@ async function initRuntime(message: unknown) {
     });
 
     socket.on("close", () => {
-      if (runtime?.activeSocket === socket) {
-        runtime.activeSocket = null;
-      }
+      runtime?.sockets.delete(socket);
     });
   });
 
   adapter.onData((data) => {
-    sendSocketOutput(data);
+    broadcastSocketOutput(data);
+    startupScriptRunner.onOutput(data);
   });
 
   adapter.onError((error) => {
@@ -169,7 +198,7 @@ async function initRuntime(message: unknown) {
         message: error.message
       }
     });
-    sendSocketEvent({
+    emitControlEvent({
       type: "error",
       sessionId,
       message: error.message
@@ -179,7 +208,8 @@ async function initRuntime(message: unknown) {
   adapter.onExit((info) => {
     if (!runtime || runtime.exited) return;
     runtime.exited = true;
-    sendSocketEvent({
+    runtime.startupScriptRunner.dispose();
+    broadcastSocketEvent({
       type: "exit",
       sessionId,
       exitCode: info.exitCode ?? null,
@@ -189,6 +219,7 @@ async function initRuntime(message: unknown) {
   });
 
   await adapter.init();
+  startupScriptRunner.start();
 
   runtime.ready = true;
   sendParent({

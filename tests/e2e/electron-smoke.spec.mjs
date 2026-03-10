@@ -67,6 +67,22 @@ async function openSessionSocket(port) {
   return ws;
 }
 
+async function openSessionSocketWithRetry(port, timeoutMs = 10_000) {
+  const startedAt = Date.now();
+  let lastError = null;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      return await openSessionSocket(port);
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+  }
+
+  throw lastError ?? new Error(`Timed out connecting websocket on port ${port}`);
+}
+
 function waitForSocketOutput(ws, marker, timeoutMs = 20_000) {
   return new Promise((resolve, reject) => {
     let buffer = "";
@@ -494,6 +510,39 @@ test("builtin webview widgets load runtime and protocol urls", async ({}, testIn
       )
     ).toBeTruthy();
   });
+
+  await runHumanStep(page, testInfo, "open-command-snippets-widget-webview", async () => {
+    await clickPaneWidgetMenuItem(page, 0, "Snippets");
+    await expect(page.getByRole("tab", { name: "Snippets" }).first()).toBeVisible();
+    await waitForVisibleWidgetRuntimeReady(page);
+    const webviewSources = await page.locator("webview").evaluateAll((nodes) =>
+      nodes
+        .map((node) => node.getAttribute("src"))
+        .filter(Boolean)
+    );
+    expect(
+      webviewSources.some((src) =>
+        src.includes("localterm-extension://builtin.workspace/widgets/command-snippets/index.html")
+      )
+    ).toBeTruthy();
+  });
+});
+
+test("edge peek snippets widget opens on hover and can open as tab", async ({}, testInfo) => {
+  await createWorkspaceFromMenu(page, testInfo);
+
+  await runHumanStep(page, testInfo, "hover-edge-peek-snippets", async () => {
+    const peekButton = page.getByTitle("Peek Snippets");
+    await expect(peekButton).toBeVisible();
+    await peekButton.hover();
+    await expect(page.getByRole("button", { name: "Open Tab" })).toBeVisible();
+    await waitForVisibleWidgetRuntimeReady(page);
+  });
+
+  await runHumanStep(page, testInfo, "open-edge-peek-snippets-as-tab", async () => {
+    await page.getByRole("button", { name: "Open Tab" }).click();
+    await expect(page.getByRole("tab", { name: "Snippets" }).first()).toBeVisible();
+  });
 });
 
 test("terminal startup scripts creation path works", async ({}, testInfo) => {
@@ -503,7 +552,7 @@ test("terminal startup scripts creation path works", async ({}, testInfo) => {
     await clickPaneWidgetMenuItem(page, 0, "Terminal");
     await expect(page.getByRole("heading", { name: "Terminal Startup Scripts" })).toBeVisible();
     await page.getByRole("button", { name: "+ Add Startup Script" }).click();
-    await page.locator('input[type="number"]').first().fill("50");
+    await page.locator('input[type="number"]').first().fill("500");
     await page.getByPlaceholder("Command").first().fill("echo __E2E_STARTUP__");
     await page.getByRole("button", { name: "Create Terminal" }).click();
 
@@ -511,6 +560,18 @@ test("terminal startup scripts creation path works", async ({}, testInfo) => {
     const terminalStatusLine = page.getByText(/Terminal\s*\d+\s*\[(starting|ready)\]/).first();
     await expect(terminalStatusLine).toBeVisible({ timeout: 30_000 });
   });
+
+  const targetSession = await getFirstReadySession(page);
+  expect(targetSession).toBeTruthy();
+  expect(targetSession.port).toBeGreaterThan(0);
+
+  const ws = await openSessionSocketWithRetry(targetSession.port);
+  try {
+    const output = await waitForSocketOutput(ws, "__E2E_STARTUP__", 30_000);
+    expect(output.includes("__E2E_STARTUP__")).toBeTruthy();
+  } finally {
+    ws.close();
+  }
 });
 
 test("workspace close to history then reopen from picker", async ({}, testInfo) => {

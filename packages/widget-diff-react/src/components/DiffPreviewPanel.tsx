@@ -7,6 +7,7 @@ const NEW_LINE_PREFIX = "line-new-";
 
 type DiffPreviewPanelProps = {
   file: DiffReviewFile | null;
+  emptyMessage?: string;
   onSelectionChange: (selection: TextSelectionInfo | null) => void;
   onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void;
 };
@@ -98,7 +99,12 @@ function readSelection(container: HTMLElement) {
   } as TextSelectionInfo;
 }
 
-export function DiffPreviewPanel({ file, onSelectionChange, onContextMenu }: DiffPreviewPanelProps) {
+export function DiffPreviewPanel({
+  file,
+  emptyMessage = "请先在左侧选择一个文件。",
+  onSelectionChange,
+  onContextMenu
+}: DiffPreviewPanelProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
 
   const parsedFile = useMemo(() => {
@@ -143,7 +149,7 @@ export function DiffPreviewPanel({ file, onSelectionChange, onContextMenu }: Dif
   if (!file) {
     return (
       <section className="diff-preview diff-preview--placeholder" onContextMenu={onContextMenu}>
-        请先在左侧选择一个文件。
+        {emptyMessage}
       </section>
     );
   }

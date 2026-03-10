@@ -38,6 +38,10 @@ export type WidgetTabSummary = {
   tabId: string;
   title: string;
   kind: string;
+  isActive?: boolean;
+  extensionId?: string | null;
+  widgetId?: string | null;
+  sessionId?: string | null;
 };
 
 export type WidgetContextPayload = {

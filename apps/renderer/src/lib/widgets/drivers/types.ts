@@ -14,6 +14,7 @@ export type WidgetDriverInputMap = {
   "file.browser": ExtensionWidgetInput;
   "diff.review": ExtensionWidgetInput;
   "note.markdown": ExtensionWidgetInput;
+  "command-snippets": ExtensionWidgetInput;
 };
 
 export type WidgetDriverHandle = {
