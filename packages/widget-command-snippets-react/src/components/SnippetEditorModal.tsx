@@ -49,39 +49,42 @@ export function SnippetEditorModal({
 
   return (
     <div
-      className="fixed inset-0 z-40 grid place-items-center bg-black/50 p-4"
+      className="fixed inset-0 z-40 grid place-items-center bg-black/55 p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
           onClose();
         }
       }}
     >
-      <section className="grid w-[min(760px,95vw)] max-h-[90vh] min-h-0 grid-rows-[auto_1fr_auto] rounded-lg border border-zinc-700 bg-zinc-950 p-3 text-zinc-100">
-        <header className="mb-2 flex items-center justify-between">
-          <h2 className="m-0 text-sm font-semibold">{mode === "create" ? "新建 Snippet" : "编辑 Snippet"}</h2>
+      <section className="snippet-editor-modal">
+        <header className="snippet-editor-modal__header">
+          <div>
+            <div className="widget-eyebrow">Command Snippets</div>
+            <h2 className="snippet-editor-modal__title">{mode === "create" ? "新建 Snippet" : "编辑 Snippet"}</h2>
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="h-7 rounded border border-zinc-700 bg-zinc-900 px-2 text-xs text-zinc-200 hover:border-zinc-500"
+            className="widget-button widget-button--ghost"
           >
             关闭
           </button>
         </header>
 
-        <div className="min-h-0 overflow-auto pr-1">
-          <div className="grid gap-2">
-            <label className="grid gap-1 text-xs text-zinc-300">
+        <div className="snippet-editor-modal__body">
+          <div className="snippet-editor-modal__fields">
+            <label className="snippet-editor-modal__field">
               标题 *
               <input
                 value={title}
                 onChange={(event) => {
                   setTitle(event.target.value);
                 }}
-                className="h-9 rounded border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-sky-500"
+                className="widget-input"
               />
             </label>
 
-            <label className="grid gap-1 text-xs text-zinc-300">
+            <label className="snippet-editor-modal__field">
               内容 *
               <textarea
                 value={content}
@@ -90,30 +93,30 @@ export function SnippetEditorModal({
                   setContent(event.target.value);
                 }}
                 rows={8}
-                className="rounded border border-zinc-700 bg-zinc-900 p-3 font-mono text-[12px] text-zinc-100 outline-none focus:border-sky-500"
+                className="widget-textarea widget-code"
               />
             </label>
 
-            <label className="grid gap-1 text-xs text-zinc-300">
+            <label className="snippet-editor-modal__field">
               描述
               <input
                 value={description}
                 onChange={(event) => {
                   setDescription(event.target.value);
                 }}
-                className="h-9 rounded border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-sky-500"
+                className="widget-input"
               />
             </label>
 
-            <div className="grid gap-2 md:grid-cols-2">
-              <label className="grid gap-1 text-xs text-zinc-300">
+            <div className="snippet-editor-modal__grid">
+              <label className="snippet-editor-modal__field">
                 类型
                 <select
                   value={type}
                   onChange={(event) => {
                     setType(event.target.value as CommandSnippetType);
                   }}
-                  className="h-9 rounded border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-sky-500"
+                  className="widget-select"
                 >
                   <option value="command">command</option>
                   <option value="prompt">prompt</option>
@@ -122,7 +125,7 @@ export function SnippetEditorModal({
                 </select>
               </label>
 
-              <label className="grid gap-1 text-xs text-zinc-300">
+              <label className="snippet-editor-modal__field">
                 标签（逗号分隔）
                 <input
                   value={tagsInput}
@@ -130,34 +133,34 @@ export function SnippetEditorModal({
                     setTagsInput(event.target.value);
                   }}
                   placeholder="test, ci, codex"
-                  className="h-9 rounded border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-sky-500"
+                  className="widget-input"
                 />
               </label>
 
-              <label className="grid gap-1 text-xs text-zinc-300">
+              <label className="snippet-editor-modal__field">
                 projectScope
                 <input
                   value={projectScope}
                   onChange={(event) => {
                     setProjectScope(event.target.value);
                   }}
-                  className="h-9 rounded border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-sky-500"
+                  className="widget-input"
                 />
               </label>
 
-              <label className="grid gap-1 text-xs text-zinc-300">
+              <label className="snippet-editor-modal__field">
                 agentScope
                 <input
                   value={agentScope}
                   onChange={(event) => {
                     setAgentScope(event.target.value);
                   }}
-                  className="h-9 rounded border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-sky-500"
+                  className="widget-input"
                 />
               </label>
             </div>
 
-            <label className="mt-1 inline-flex items-center gap-2 text-xs text-zinc-300">
+            <label className="snippet-editor-modal__checkbox">
               <input
                 type="checkbox"
                 checked={isPinned}
@@ -170,13 +173,13 @@ export function SnippetEditorModal({
           </div>
         </div>
 
-        <footer className="mt-2 flex items-center justify-between gap-2">
-          <span className="text-xs text-red-300">{error ?? ""}</span>
-          <div className="flex gap-2">
+        <footer className="snippet-editor-modal__footer">
+          <span className="snippet-editor-modal__error">{error ?? ""}</span>
+          <div className="snippet-editor-modal__actions">
             <button
               type="button"
               onClick={onClose}
-              className="h-8 rounded border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200 hover:border-zinc-500"
+              className="widget-button"
             >
               取消
             </button>
@@ -203,7 +206,7 @@ export function SnippetEditorModal({
                   isPinned
                 });
               }}
-              className="h-8 rounded border border-sky-700 bg-sky-900/70 px-3 text-xs text-sky-100 hover:border-sky-500"
+              className="widget-button widget-button--accent"
             >
               {mode === "create" ? "创建" : "保存"}
             </button>

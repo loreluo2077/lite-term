@@ -30,22 +30,22 @@ export function SnippetFilters({
   onSortChange
 }: SnippetFiltersProps) {
   return (
-    <section className="rounded-lg border border-zinc-700 bg-zinc-900/60 p-2.5">
-      <div className="flex items-center gap-2">
+    <section className="snippet-filters">
+      <div className="snippet-filters__row">
         <input
           value={query}
           onChange={(event) => {
             onQueryChange(event.target.value);
           }}
           placeholder="搜索命令、prompt、标签或内容"
-          className="h-9 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-sky-500"
+          className="widget-input"
         />
         <select
           value={sort}
           onChange={(event) => {
             onSortChange(event.target.value as SnippetSortKind);
           }}
-          className="h-9 rounded-md border border-zinc-700 bg-zinc-950 px-2.5 text-xs text-zinc-200 outline-none focus:border-sky-500"
+          className="widget-select snippet-filters__sort"
           title="排序"
         >
           <option value="smart">智能排序</option>
@@ -55,7 +55,7 @@ export function SnippetFilters({
         </select>
       </div>
 
-      <div className="mt-2 flex flex-wrap gap-1.5">
+      <div className="snippet-filters__pills">
         {FILTERS.map((entry) => {
           const active = filter === entry.key;
           const title =
@@ -68,11 +68,7 @@ export function SnippetFilters({
               onClick={() => {
                 onFilterChange(entry.key);
               }}
-              className={`h-7 rounded-full border px-2.5 text-[11px] ${
-                active
-                  ? "border-sky-500 bg-sky-900/50 text-sky-100"
-                  : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500"
-              }`}
+              className={active ? "widget-pill widget-pill--active" : "widget-pill"}
             >
               {entry.label}
             </button>

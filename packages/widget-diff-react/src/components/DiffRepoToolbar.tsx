@@ -22,14 +22,14 @@ export function DiffRepoToolbar({
       <div className="diff-review-toolbar__actions">
         <button
           type="button"
-          className="diff-review-toolbar__button"
+          className="widget-button"
           onClick={onChooseRepo}
         >
           Choose Repo
         </button>
         <button
           type="button"
-          className="diff-review-toolbar__button"
+          className="widget-button"
           onClick={onRefresh}
           disabled={!repoPath || isRefreshing}
         >

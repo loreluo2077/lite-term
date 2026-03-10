@@ -1,4 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  WidgetHeader,
+  WidgetHeaderActions,
+  WidgetPanel,
+  WidgetShell,
+  WidgetStatusBar,
+  WidgetTitleBlock
+} from "@localterm/widget-ui-react";
 import { SnippetDetail } from "./components/SnippetDetail";
 import { SnippetEditorModal } from "./components/SnippetEditorModal";
 import { SnippetFilters } from "./components/SnippetFilters";
@@ -373,59 +381,62 @@ export default function App() {
   }, [api, markSnippetUsed, refreshTerminalAvailability, resolveTerminalTarget, selectedSnippet]);
 
   return (
-    <main className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(120px,1fr)_minmax(210px,42%)] gap-2.5 bg-[radial-gradient(circle_at_top_left,rgba(41,77,153,0.24),rgba(9,9,11,1)_62%)] p-3 text-zinc-100">
-      <header className="flex items-center gap-2">
-        <div>
-          <h1 className="m-0 text-[15px] font-semibold tracking-wide">Command Snippets</h1>
-          <p className="mt-1 text-[11px] text-zinc-400">
-            {filteredSnippets.length}/{snippets.length} snippets
-          </p>
-        </div>
-        <span className="ml-auto truncate text-[11px] text-zinc-400">{workspaceName}</span>
-        <button
-          type="button"
-          onClick={handleCreate}
-          className="h-8 rounded-md border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-100 hover:border-sky-500"
-        >
-          新建
-        </button>
-      </header>
+    <WidgetShell className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(120px,1fr)_minmax(220px,44%)]">
+      <WidgetHeader>
+        <WidgetTitleBlock
+          eyebrow="Human Console"
+          title="Command Snippets"
+          subtitle={`${filteredSnippets.length}/${snippets.length} snippets`}
+        />
+        <WidgetHeaderActions>
+          <span className="widget-chip max-w-[180px] truncate">{workspaceName}</span>
+          <button type="button" onClick={handleCreate} className="widget-button widget-button--accent">
+            新建
+          </button>
+        </WidgetHeaderActions>
+      </WidgetHeader>
 
-      <SnippetFilters
-        query={query}
-        filter={filter}
-        sort={sort}
-        workspaceName={workspaceName}
-        onQueryChange={setQuery}
-        onFilterChange={setFilter}
-        onSortChange={setSort}
-      />
+      <WidgetPanel tone="muted">
+        <SnippetFilters
+          query={query}
+          filter={filter}
+          sort={sort}
+          workspaceName={workspaceName}
+          onQueryChange={setQuery}
+          onFilterChange={setFilter}
+          onSortChange={setSort}
+        />
+      </WidgetPanel>
 
-      <SnippetList
-        snippets={filteredSnippets}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-        onTogglePin={handleTogglePin}
-        onMoveSelection={moveSelection}
-      />
+      <WidgetPanel>
+        <SnippetList
+          snippets={filteredSnippets}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          onTogglePin={handleTogglePin}
+          onMoveSelection={moveSelection}
+        />
+      </WidgetPanel>
 
-      <SnippetDetail
-        snippet={selectedSnippet}
-        terminalActionAvailable={terminalActionAvailable}
-        terminalHint={terminalHint}
-        insertingTerminal={insertingTerminal}
-        onCopyContent={() => {
-          void handleCopyContent();
-        }}
-        onCopyTitleAndContent={() => {
-          void handleCopyTitleAndContent();
-        }}
-        onInsertTerminal={() => {
-          void handleInsertTerminal();
-        }}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-      />
+      <WidgetPanel tone="muted">
+        <SnippetDetail
+          snippet={selectedSnippet}
+          terminalActionAvailable={terminalActionAvailable}
+          terminalHint={terminalHint}
+          insertingTerminal={insertingTerminal}
+          onCopyContent={() => {
+            void handleCopyContent();
+          }}
+          onCopyTitleAndContent={() => {
+            void handleCopyTitleAndContent();
+          }}
+          onInsertTerminal={() => {
+            void handleInsertTerminal();
+          }}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+        />
+      </WidgetPanel>
 
       <SnippetEditorModal
         open={editor.open}
@@ -442,9 +453,7 @@ export default function App() {
         onSubmit={handleSaveFromModal}
       />
 
-      <div className="pointer-events-none absolute bottom-3 right-3 rounded border border-zinc-700 bg-zinc-900/90 px-2 py-1 text-[11px] text-zinc-300">
-        {statusMessage ?? "录入、搜索、复制、插入终端（不执行）"}
-      </div>
-    </main>
+      <WidgetStatusBar message={statusMessage ?? "录入、搜索、复制、插入终端（不执行）"} />
+    </WidgetShell>
   );
 }

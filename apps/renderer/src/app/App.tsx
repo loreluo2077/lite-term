@@ -714,6 +714,8 @@ export function App() {
   const [terminalStartupPresets, setTerminalStartupPresets] = useState<TerminalStartupPreset[]>([]);
   const [selectedTerminalStartupPresetId, setSelectedTerminalStartupPresetId] = useState("");
   const [terminalStartupPresetMessage, setTerminalStartupPresetMessage] = useState("");
+  const [saveStartupPresetOpen, setSaveStartupPresetOpen] = useState(false);
+  const [saveStartupPresetName, setSaveStartupPresetName] = useState("");
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [workspaceSidebarExpanded, setWorkspaceSidebarExpanded] = useState(false);
@@ -948,6 +950,8 @@ export function App() {
     setTerminalStartupScriptDrafts([]);
     setSelectedTerminalStartupPresetId("");
     setTerminalStartupPresetMessage("");
+    setSaveStartupPresetOpen(false);
+    setSaveStartupPresetName("");
   }, []);
 
   const openTerminalStartupScriptsEditor = useCallback((tabId: string) => {
@@ -956,6 +960,8 @@ export function App() {
     setTerminalStartupScriptsTargetTabId(tabId);
     setPendingTerminalCreation(null);
     setTerminalStartupScriptDrafts(parseStartupScriptDraftsFromInput(tab.widget.input));
+    setSaveStartupPresetOpen(false);
+    setSaveStartupPresetName("");
   }, []);
 
   const openTerminalCreateDialog = useCallback((paneId: string, activate = true) => {
@@ -964,6 +970,8 @@ export function App() {
     setTerminalStartupScriptDrafts([]);
     setSelectedTerminalStartupPresetId("");
     setTerminalStartupPresetMessage("");
+    setSaveStartupPresetOpen(false);
+    setSaveStartupPresetName("");
   }, []);
 
   const createWidgetTabWithDriver = useCallback(async (payload: {
@@ -1130,11 +1138,19 @@ export function App() {
     terminalStartupScriptsTargetTabId
   ]);
 
-  const applyTerminalStartupPreset = useCallback(() => {
-    const preset = terminalStartupPresets.find(
-      (entry) => entry.id === selectedTerminalStartupPresetId
-    );
+  const handleSelectTerminalStartupPreset = useCallback((presetId: string) => {
+    setTerminalStartupPresetMessage("");
+
+    if (presetId === selectedTerminalStartupPresetId) return;
+
+    if (!presetId) {
+      setSelectedTerminalStartupPresetId("");
+      return;
+    }
+
+    const preset = terminalStartupPresets.find((entry) => entry.id === presetId);
     if (!preset) return;
+
     const hasCurrentDrafts = terminalStartupScriptDrafts.some(
       (entry) => entry.command.trim().length > 0
     );
@@ -1142,7 +1158,12 @@ export function App() {
       const confirmed = window.confirm(`Replace current startup scripts with preset "${preset.name}"?`);
       if (!confirmed) return;
     }
+
+    setSelectedTerminalStartupPresetId(presetId);
     setTerminalStartupScriptDrafts(clonePresetScriptsForDrafts(preset.scripts));
+    setSaveStartupPresetOpen(false);
+    setSaveStartupPresetName("");
+
     const now = new Date().toISOString();
     const nextPresets = terminalStartupPresets.map((entry) =>
       entry.id === preset.id
@@ -1155,7 +1176,6 @@ export function App() {
         : entry
     );
     persistTerminalStartupPresets(nextPresets);
-    setTerminalStartupPresetMessage(`Applied preset: ${preset.name}`);
   }, [
     persistTerminalStartupPresets,
     selectedTerminalStartupPresetId,
@@ -1163,18 +1183,35 @@ export function App() {
     terminalStartupScriptDrafts
   ]);
 
+  const openSaveTerminalStartupPresetDialog = useCallback(() => {
+    const scripts = draftsToPresetScripts(terminalStartupScriptDrafts);
+    if (scripts.length === 0) {
+      setTerminalStartupPresetMessage("Add at least one startup script before saving a preset.");
+      return;
+    }
+    setSaveStartupPresetOpen(true);
+    setTerminalStartupPresetMessage("");
+    setSaveStartupPresetName("");
+  }, [terminalStartupScriptDrafts]);
+
   const saveTerminalStartupPresetAsNew = useCallback(() => {
     const scripts = draftsToPresetScripts(terminalStartupScriptDrafts);
     if (scripts.length === 0) {
       setTerminalStartupPresetMessage("Add at least one startup script before saving a preset.");
       return;
     }
-    const suggestedName =
-      terminalStartupPresets.find((entry) => entry.id === selectedTerminalStartupPresetId)?.name ??
-      "";
-    const rawName = window.prompt("Preset name", suggestedName);
-    const name = rawName?.trim() ?? "";
-    if (!name) return;
+    const name = saveStartupPresetName.trim();
+    if (!name) {
+      setTerminalStartupPresetMessage("Enter a preset name before saving.");
+      return;
+    }
+    const nameExists = terminalStartupPresets.some(
+      (entry) => entry.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase()
+    );
+    if (nameExists) {
+      setTerminalStartupPresetMessage(`Preset "${name}" already exists.`);
+      return;
+    }
     const now = new Date().toISOString();
     const nextPreset: TerminalStartupPreset = {
       id: makeStartupPresetId(),
@@ -1191,40 +1228,11 @@ export function App() {
     persistTerminalStartupPresets(nextPresets);
     setSelectedTerminalStartupPresetId(nextPreset.id);
     setTerminalStartupPresetMessage(`Saved preset: ${name}`);
+    setSaveStartupPresetOpen(false);
+    setSaveStartupPresetName("");
   }, [
     persistTerminalStartupPresets,
-    selectedTerminalStartupPresetId,
-    terminalStartupPresets,
-    terminalStartupScriptDrafts
-  ]);
-
-  const updateTerminalStartupPreset = useCallback(() => {
-    const preset = terminalStartupPresets.find(
-      (entry) => entry.id === selectedTerminalStartupPresetId
-    );
-    if (!preset) return;
-    const scripts = draftsToPresetScripts(terminalStartupScriptDrafts);
-    if (scripts.length === 0) {
-      setTerminalStartupPresetMessage("Add at least one startup script before updating a preset.");
-      return;
-    }
-    const confirmed = window.confirm(`Update preset "${preset.name}" with current scripts?`);
-    if (!confirmed) return;
-    const now = new Date().toISOString();
-    const nextPresets = terminalStartupPresets.map((entry) =>
-      entry.id === preset.id
-        ? {
-            ...entry,
-            scripts,
-            updatedAt: now
-          }
-        : entry
-    );
-    persistTerminalStartupPresets(nextPresets);
-    setTerminalStartupPresetMessage(`Updated preset: ${preset.name}`);
-  }, [
-    persistTerminalStartupPresets,
-    selectedTerminalStartupPresetId,
+    saveStartupPresetName,
     terminalStartupPresets,
     terminalStartupScriptDrafts
   ]);
@@ -1240,6 +1248,8 @@ export function App() {
     persistTerminalStartupPresets(nextPresets);
     setSelectedTerminalStartupPresetId("");
     setTerminalStartupPresetMessage(`Deleted preset: ${preset.name}`);
+    setSaveStartupPresetOpen(false);
+    setSaveStartupPresetName("");
   }, [
     persistTerminalStartupPresets,
     selectedTerminalStartupPresetId,
@@ -2609,20 +2619,46 @@ export function App() {
       } gap-2 bg-zinc-950 p-2.5 text-zinc-100`}
     >
       <aside
-        className={`relative flex min-h-0 flex-col gap-2 rounded-2xl bg-zinc-900/35 p-2 ${
+        className={`relative flex min-h-0 flex-col gap-3 rounded-2xl border border-zinc-800/70 bg-zinc-900/45 p-2.5 ${
           workspaceSidebarExpanded ? "items-stretch" : "items-center"
         }`}
       >
-        <div
-          className={`${
-            workspaceSidebarExpanded ? "flex items-center justify-between gap-2" : "flex flex-col items-center gap-2"
-          }`}
-        >
-          <div className="relative">
+        <div className={`w-full ${workspaceSidebarExpanded ? "space-y-2" : "space-y-3"}`}>
+          <div
+            className={`flex w-full ${
+              workspaceSidebarExpanded ? "items-start justify-between gap-3" : "justify-center"
+            }`}
+          >
+            {workspaceSidebarExpanded ? (
+              <div className="min-w-0 px-1">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
+                  Workspaces
+                </div>
+                <div className="mt-1 truncate text-sm font-medium text-zinc-100">{workspace.name}</div>
+              </div>
+            ) : null}
+            <Button
+              variant="ghost"
+              size="icon"
+              className={workspaceSidebarExpanded ? "h-9 w-9 rounded-xl text-zinc-400 hover:text-zinc-100" : "h-9 w-9 rounded-xl text-zinc-400 hover:text-zinc-100"}
+              onClick={(event) => {
+                event.stopPropagation();
+                setWorkspaceSidebarExpanded((prev) => !prev);
+              }}
+              title={workspaceSidebarExpanded ? "Collapse Sidebar" : "Expand Sidebar"}
+            >
+              {workspaceSidebarExpanded ? "«" : "»"}
+            </Button>
+          </div>
+          <div className={`relative ${workspaceSidebarExpanded ? "w-full" : ""}`}>
             <Button
               variant="secondary"
-              size="icon"
-              className="h-11 w-11 rounded-2xl"
+              size={workspaceSidebarExpanded ? "default" : "icon"}
+              className={
+                workspaceSidebarExpanded
+                  ? "h-10 w-full justify-start rounded-xl bg-zinc-800/70 px-3 text-zinc-100 hover:bg-zinc-800"
+                  : "h-10 w-10 rounded-xl bg-zinc-800/70 text-zinc-100 hover:bg-zinc-800"
+              }
               onClick={(event) => {
                 event.stopPropagation();
                 setPlusMenuOpen((open) => !open);
@@ -2630,7 +2666,8 @@ export function App() {
               disabled={workspaceActionBusy}
               title="Workspace Menu"
             >
-              +
+              <span className="text-base leading-none">+</span>
+              {workspaceSidebarExpanded ? <span>New / Open</span> : null}
             </Button>
             {plusMenuOpen ? (
               <div
@@ -2660,21 +2697,8 @@ export function App() {
               </div>
             ) : null}
           </div>
-
-          <Button
-            variant="secondary"
-            size="icon"
-            className={workspaceSidebarExpanded ? "h-11 w-11 rounded-2xl" : "h-10 w-10 rounded-xl"}
-            onClick={(event) => {
-              event.stopPropagation();
-              setWorkspaceSidebarExpanded((prev) => !prev);
-            }}
-            title={workspaceSidebarExpanded ? "Collapse Sidebar" : "Expand Sidebar"}
-          >
-            {workspaceSidebarExpanded ? "«" : "»"}
-          </Button>
         </div>
-        <div className={`h-px bg-zinc-700/55 ${workspaceSidebarExpanded ? "w-full" : "w-10"}`} />
+        <div className={`h-px bg-zinc-800/80 ${workspaceSidebarExpanded ? "w-full" : "w-10"}`} />
         <div
           className={`flex min-h-0 w-full flex-1 flex-col gap-2 overflow-y-auto ${
             workspaceSidebarExpanded ? "items-stretch" : "items-center"
@@ -2700,16 +2724,30 @@ export function App() {
                 className={
                   workspaceSidebarExpanded
                     ? active
-                      ? "flex h-11 w-full items-center gap-2 rounded-xl bg-zinc-800 px-3 text-sm text-zinc-100 ring-1 ring-amber-300/70"
-                      : "flex h-11 w-full items-center gap-2 rounded-xl bg-zinc-800/70 px-3 text-sm text-zinc-300 hover:bg-zinc-800"
+                      ? "relative flex h-10 w-full items-center gap-2 rounded-xl bg-zinc-800/95 px-3 pl-4 text-sm text-zinc-50 shadow-[inset_0_0_0_1px_rgba(125,211,252,0.18)]"
+                      : "relative flex h-10 w-full items-center gap-2 rounded-xl bg-transparent px-3 pl-4 text-sm text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100"
                     : active
-                      ? "h-11 w-11 rounded-2xl bg-zinc-800 text-xs font-semibold text-zinc-100 ring-1 ring-amber-300/70"
-                      : "h-11 w-11 rounded-2xl bg-zinc-800/70 text-xs font-semibold text-zinc-300 hover:bg-zinc-800"
+                      ? "relative h-10 w-10 rounded-xl bg-zinc-800/95 text-xs font-semibold text-zinc-50 shadow-[inset_0_0_0_1px_rgba(125,211,252,0.18)]"
+                      : "relative h-10 w-10 rounded-xl bg-transparent text-xs font-semibold text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100"
                 }
               >
+                {active ? (
+                  <span
+                    aria-hidden="true"
+                    className={
+                      workspaceSidebarExpanded
+                        ? "absolute left-1.5 top-2 bottom-2 w-0.5 rounded-full bg-sky-300"
+                        : "absolute left-1 top-2 bottom-2 w-0.5 rounded-full bg-sky-300"
+                    }
+                  />
+                ) : null}
                 {workspaceSidebarExpanded ? (
                   <>
-                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-zinc-700/80 text-[11px] font-semibold">
+                    <span
+                      className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[11px] font-semibold ${
+                        active ? "bg-zinc-700/85 text-zinc-50" : "bg-zinc-800/75 text-zinc-300"
+                      }`}
+                    >
                       {workspaceBadge(entry.name)}
                     </span>
                     <span className="truncate">{entry.name}</span>
@@ -3267,8 +3305,7 @@ export function App() {
                   className="h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none"
                   value={selectedTerminalStartupPresetId}
                   onChange={(event) => {
-                    setSelectedTerminalStartupPresetId(event.target.value);
-                    setTerminalStartupPresetMessage("");
+                    handleSelectTerminalStartupPreset(event.target.value);
                   }}
                 >
                   <option value="">Select a preset</option>
@@ -3281,21 +3318,11 @@ export function App() {
               </div>
               <div className="flex flex-wrap gap-2 md:self-end">
                 <Button
+                  type="button"
                   variant="outline"
-                  onClick={applyTerminalStartupPreset}
-                  disabled={!selectedTerminalStartupPreset}
+                  onClick={openSaveTerminalStartupPresetDialog}
                 >
-                  Apply Preset
-                </Button>
-                <Button variant="outline" onClick={saveTerminalStartupPresetAsNew}>
                   Save As Preset
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={updateTerminalStartupPreset}
-                  disabled={!selectedTerminalStartupPreset}
-                >
-                  Update Preset
                 </Button>
                 <Button
                   variant="outline"
@@ -3316,6 +3343,31 @@ export function App() {
                 {terminalStartupPresetMessage || "Save reusable boot sequences for one-click reuse."}
               </span>
             </div>
+            {saveStartupPresetOpen ? (
+              <div className="mt-3 flex flex-col gap-2 rounded-md border border-zinc-700 bg-zinc-950/80 p-3 md:flex-row md:items-center">
+                <input
+                  className="h-9 flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none"
+                  value={saveStartupPresetName}
+                  onChange={(event) => setSaveStartupPresetName(event.target.value)}
+                  placeholder="Preset name"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSaveStartupPresetOpen(false);
+                      setSaveStartupPresetName("");
+                      setTerminalStartupPresetMessage("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button onClick={saveTerminalStartupPresetAsNew} disabled={!saveStartupPresetName.trim()}>
+                    Save
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </div>
           <div className="max-h-[55vh] space-y-3 overflow-auto">
             {terminalStartupScriptDrafts.map((entry) => (

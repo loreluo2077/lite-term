@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { WidgetHeader, WidgetPanel, WidgetShell, WidgetStatusBar, WidgetTitleBlock } from "@localterm/widget-ui-react";
 import { DiffRepoToolbar } from "./components/DiffRepoToolbar";
 import { DiffFileList } from "./components/DiffFileList";
 import { DiffPreviewPanel } from "./components/DiffPreviewPanel";
@@ -293,32 +294,41 @@ export default function App() {
   }, []);
 
   return (
-    <main className="diff-review-shell">
-      <DiffRepoToolbar
-        repoPath={state.repoPath}
-        isRefreshing={isRefreshing}
-        onChooseRepo={() => {
-          void handleChooseRepo();
-        }}
-        onRefresh={handleRefresh}
-      />
-      <section className="diff-review-layout">
-        <DiffFileList files={state.files} selectedPath={selectedFile?.path ?? null} onSelectFile={selectFile} />
-        <DiffPreviewPanel
-          file={selectedFile}
-          emptyMessage={
-            state.repoPath
-              ? "当前仓库没有可展示的 diff，或还没有选择文件。"
-              : "先选择一个 Git 仓库目录。"
-          }
-          onSelectionChange={setSelection}
-          onContextMenu={handleContextMenu}
+    <WidgetShell className="diff-review-shell">
+      <WidgetHeader>
+        <WidgetTitleBlock
+          eyebrow="Review"
+          title="Approval Diff"
+          subtitle={state.repoPath ? `${state.files.length} files changed` : "选择 Git 仓库后查看当前改动"}
         />
+        <DiffRepoToolbar
+          repoPath={state.repoPath}
+          isRefreshing={isRefreshing}
+          onChooseRepo={() => {
+            void handleChooseRepo();
+          }}
+          onRefresh={handleRefresh}
+        />
+      </WidgetHeader>
+      <section className="diff-review-layout">
+        <WidgetPanel>
+          <DiffFileList files={state.files} selectedPath={selectedFile?.path ?? null} onSelectFile={selectFile} />
+        </WidgetPanel>
+        <WidgetPanel tone="muted">
+          <DiffPreviewPanel
+            file={selectedFile}
+            emptyMessage={
+              state.repoPath
+                ? "当前仓库没有可展示的 diff，或还没有选择文件。"
+                : "先选择一个 Git 仓库目录。"
+            }
+            onSelectionChange={setSelection}
+            onContextMenu={handleContextMenu}
+          />
+        </WidgetPanel>
       </section>
 
-      <div className={`diff-review-toast ${statusMessage ? "is-visible" : ""}`}>
-        {statusMessage ?? "右键打开菜单，可复制路径与摘录"}
-      </div>
+      <WidgetStatusBar message={statusMessage ?? "右键打开菜单，可复制路径与摘录"} />
 
       {contextMenu ? (
         <div
@@ -373,6 +383,6 @@ export default function App() {
           </button>
         </div>
       ) : null}
-    </main>
+    </WidgetShell>
   );
 }

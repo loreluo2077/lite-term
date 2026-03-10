@@ -574,6 +574,30 @@ test("terminal startup scripts creation path works", async ({}, testInfo) => {
   }
 });
 
+test("terminal startup preset save-as works", async ({}, testInfo) => {
+  await createWorkspaceFromMenu(page, testInfo);
+  const presetName = `E2E Preset ${Date.now().toString(36)}`;
+
+  await runHumanStep(page, testInfo, "prepare-terminal-startup-preset", async () => {
+    await clickPaneWidgetMenuItem(page, 0, "Terminal");
+    await expect(page.getByRole("heading", { name: "Terminal Startup Scripts" })).toBeVisible();
+    await page.getByRole("button", { name: "+ Add Startup Script" }).click();
+    await page.locator('input[type="number"]').first().fill("100");
+    await page.getByPlaceholder("Command").first().fill("echo __E2E_PRESET__");
+    await expect(page.getByPlaceholder("Preset name")).toHaveCount(0);
+  });
+
+  await runHumanStep(page, testInfo, "save-terminal-startup-preset", async () => {
+    await page.getByRole("button", { name: "Save As Preset" }).click();
+    await expect(page.getByPlaceholder("Preset name")).toBeVisible();
+    await page.getByPlaceholder("Preset name").fill(presetName);
+    await page.getByRole("button", { name: /^Save$/ }).click();
+    await expect(page.getByPlaceholder("Preset name")).toHaveCount(0);
+    await expect(page.locator("select option").filter({ hasText: presetName })).toHaveCount(1);
+    await expect(page.getByText(`Saved preset: ${presetName}`)).toBeVisible();
+  });
+});
+
 test("workspace close to history then reopen from picker", async ({}, testInfo) => {
   await createWorkspaceFromMenu(page, testInfo);
   const activeWorkspaceName = await getActiveWorkspaceName(page);
