@@ -31,6 +31,7 @@ import type {
   WidgetTabDescriptor,
   WidgetKind,
   WorkspaceListResponse,
+  WorkspaceStorageInfoResponse,
   WorkspaceSnapshot
 } from "@localterm/shared";
 import { resolveWidgetDescriptorFromTabDescriptor } from "@localterm/shared";
@@ -125,6 +126,9 @@ type TerminalStartupPreset = {
   id: string;
   name: string;
   scripts: TerminalStartupPresetScript[];
+  workspaceScopeId?: string | null;
+  workspaceScopeName?: string | null;
+  workspaceRootPath?: string | null;
   usageCount: number;
   lastUsedAt?: string | null;
   createdAt: string;
@@ -270,7 +274,8 @@ const DEFAULT_TERMINAL_SIZE = {
 };
 
 const EDGE_PEEK_SNIPPETS_STORAGE_KEY = "localterm.edge-peek.command-snippets.v1";
-const TERMINAL_STARTUP_PRESETS_STORAGE_KEY = "localterm.terminal-startup-presets.v1";
+const TERMINAL_STARTUP_PRESETS_STORAGE_KEY = "terminal-startup-presets";
+const LEGACY_TERMINAL_STARTUP_PRESETS_STORAGE_KEY = "localterm.terminal-startup-presets.v1";
 const WORKSPACE_AUTOSAVE_DEBOUNCE_MS = 500;
 const WIDGET_REGISTRY_AUTOSAVE_DEBOUNCE_MS = 250;
 
@@ -343,6 +348,18 @@ function normalizeTerminalStartupPresets(raw: unknown): TerminalStartupPreset[] 
           : `preset-${index}`,
       name,
       scripts,
+      workspaceScopeId:
+        typeof candidate.workspaceScopeId === "string" && candidate.workspaceScopeId.trim()
+          ? candidate.workspaceScopeId.trim()
+          : null,
+      workspaceScopeName:
+        typeof candidate.workspaceScopeName === "string" && candidate.workspaceScopeName.trim()
+          ? candidate.workspaceScopeName.trim()
+          : null,
+      workspaceRootPath:
+        typeof candidate.workspaceRootPath === "string" && candidate.workspaceRootPath.trim()
+          ? candidate.workspaceRootPath.trim()
+          : null,
       usageCount:
         typeof candidate.usageCount === "number" && Number.isFinite(candidate.usageCount)
           ? Math.max(0, Math.floor(candidate.usageCount))
@@ -359,6 +376,18 @@ function normalizeTerminalStartupPresets(raw: unknown): TerminalStartupPreset[] 
     });
   });
   return presets.sort((left, right) => left.name.localeCompare(right.name, "zh-CN"));
+}
+
+function sortTerminalStartupPresetsForWorkspace(
+  presets: TerminalStartupPreset[],
+  workspaceId: string
+) {
+  return [...presets].sort((left, right) => {
+    const leftScoped = left.workspaceScopeId === workspaceId;
+    const rightScoped = right.workspaceScopeId === workspaceId;
+    if (leftScoped !== rightScoped) return leftScoped ? -1 : 1;
+    return left.name.localeCompare(right.name, "zh-CN");
+  });
 }
 
 function clonePresetScriptsForDrafts(
@@ -460,6 +489,28 @@ function defaultNoteWidgetInput(): ExtensionWidgetInput {
 
 function normalizeExtensionWidgetInput(input: unknown): ExtensionWidgetInput {
   return parseWidgetInput(input) ?? defaultNoteWidgetInput();
+}
+
+function applyWorkspaceDefaultsToWidgetState(
+  widgetId: string,
+  state: Record<string, unknown> | undefined,
+  workspaceRootPath: string
+) {
+  if (!workspaceRootPath) return state;
+  if (widgetId === "file.browser") {
+    return {
+      rootPath: workspaceRootPath,
+      currentPath: workspaceRootPath,
+      ...(state ?? {})
+    };
+  }
+  if (widgetId === "diff.review") {
+    return {
+      repoPath: workspaceRootPath,
+      ...(state ?? {})
+    };
+  }
+  return state;
 }
 
 function isBuiltinTerminalExtensionInput(input: unknown): input is ExtensionWidgetInput {
@@ -706,6 +757,9 @@ export function App() {
     workspaces: []
   });
   const [workspaceActionBusy, setWorkspaceActionBusy] = useState(false);
+  const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false);
+  const [createWorkspaceName, setCreateWorkspaceName] = useState("");
+  const [createWorkspaceRootPath, setCreateWorkspaceRootPath] = useState("");
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [saveAsName, setSaveAsName] = useState("");
   const [terminalStartupScriptsTargetTabId, setTerminalStartupScriptsTargetTabId] = useState<string | null>(null);
@@ -737,6 +791,10 @@ export function App() {
   } | null>(null);
   const [workspaceRenameTargetId, setWorkspaceRenameTargetId] = useState<string | null>(null);
   const [workspaceRenameName, setWorkspaceRenameName] = useState("");
+  const [workspaceRootPathTargetId, setWorkspaceRootPathTargetId] = useState<string | null>(null);
+  const [workspaceRootPathDraft, setWorkspaceRootPathDraft] = useState("");
+  const [storageInfoOpen, setStorageInfoOpen] = useState(false);
+  const [workspaceStorageInfo, setWorkspaceStorageInfo] = useState<WorkspaceStorageInfoResponse | null>(null);
   const [widgetWebviewPreloadUrl, setWidgetWebviewPreloadUrl] = useState<string | null>(null);
   const [perfPanelOpen, setPerfPanelOpen] = useState(false);
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
@@ -808,6 +866,10 @@ export function App() {
     () =>
       terminalStartupPresets.find((entry) => entry.id === selectedTerminalStartupPresetId) ?? null,
     [selectedTerminalStartupPresetId, terminalStartupPresets]
+  );
+  const orderedTerminalStartupPresets = useMemo(
+    () => sortTerminalStartupPresetsForWorkspace(terminalStartupPresets, workspace.id),
+    [terminalStartupPresets, workspace.id]
   );
   const edgePeekSnippetsTemplate = useMemo(
     () =>
@@ -928,13 +990,13 @@ export function App() {
     );
   }, []);
 
-  const persistTerminalStartupPresets = useCallback((presets: TerminalStartupPreset[]) => {
+  const persistTerminalStartupPresets = useCallback(async (presets: TerminalStartupPreset[]) => {
     setTerminalStartupPresets(presets);
     try {
-      window.localStorage.setItem(
-        TERMINAL_STARTUP_PRESETS_STORAGE_KEY,
-        JSON.stringify(presets)
-      );
+      await window.localtermApi.workspace.setGlobalLibrary({
+        key: TERMINAL_STARTUP_PRESETS_STORAGE_KEY,
+        value: presets
+      });
     } catch (error) {
       console.error("terminal startup presets persist failed", error);
     }
@@ -1048,6 +1110,7 @@ export function App() {
     const input = makeWidgetInput(template, {
       cols: DEFAULT_TERMINAL_SIZE.cols,
       rows: DEFAULT_TERMINAL_SIZE.rows,
+      cwd: workspace.rootPath || "",
       startupScripts: []
     });
     return await createWidgetTabWithDriver({
@@ -1057,7 +1120,7 @@ export function App() {
       activate,
       paneId
     });
-  }, [createWidgetTabWithDriver, resolvedActivePaneId, widgetTemplates]);
+  }, [createWidgetTabWithDriver, resolvedActivePaneId, widgetTemplates, workspace.rootPath]);
 
   const createExtensionTerminalTabWithStartupScripts = useCallback(async (
     payload: {
@@ -1078,6 +1141,7 @@ export function App() {
     const input = makeWidgetInput(template, {
       cols: DEFAULT_TERMINAL_SIZE.cols,
       rows: DEFAULT_TERMINAL_SIZE.rows,
+      cwd: workspace.rootPath || "",
       startupScripts: payload.startupScripts
     });
 
@@ -1088,7 +1152,7 @@ export function App() {
       activate: payload.activate,
       paneId: payload.paneId
     });
-  }, [createWidgetTabWithDriver, widgetTemplates]);
+  }, [createWidgetTabWithDriver, widgetTemplates, workspace.rootPath]);
 
   const saveTerminalStartupScriptsEditor = useCallback(() => {
     const startupScripts = draftsToStartupScripts(terminalStartupScriptDrafts);
@@ -1175,7 +1239,7 @@ export function App() {
           }
         : entry
     );
-    persistTerminalStartupPresets(nextPresets);
+    void persistTerminalStartupPresets(nextPresets);
   }, [
     persistTerminalStartupPresets,
     selectedTerminalStartupPresetId,
@@ -1217,6 +1281,9 @@ export function App() {
       id: makeStartupPresetId(),
       name,
       scripts,
+      workspaceScopeId: workspace.id,
+      workspaceScopeName: workspace.name,
+      workspaceRootPath: workspace.rootPath || null,
       usageCount: 0,
       lastUsedAt: null,
       createdAt: now,
@@ -1225,7 +1292,7 @@ export function App() {
     const nextPresets = [...terminalStartupPresets, nextPreset].sort((left, right) =>
       left.name.localeCompare(right.name, "zh-CN")
     );
-    persistTerminalStartupPresets(nextPresets);
+    void persistTerminalStartupPresets(nextPresets);
     setSelectedTerminalStartupPresetId(nextPreset.id);
     setTerminalStartupPresetMessage(`Saved preset: ${name}`);
     setSaveStartupPresetOpen(false);
@@ -1234,7 +1301,10 @@ export function App() {
     persistTerminalStartupPresets,
     saveStartupPresetName,
     terminalStartupPresets,
-    terminalStartupScriptDrafts
+    terminalStartupScriptDrafts,
+    workspace.id,
+    workspace.name,
+    workspace.rootPath
   ]);
 
   const deleteTerminalStartupPreset = useCallback(() => {
@@ -1245,7 +1315,7 @@ export function App() {
     const confirmed = window.confirm(`Delete preset "${preset.name}"?`);
     if (!confirmed) return;
     const nextPresets = terminalStartupPresets.filter((entry) => entry.id !== preset.id);
-    persistTerminalStartupPresets(nextPresets);
+    void persistTerminalStartupPresets(nextPresets);
     setSelectedTerminalStartupPresetId("");
     setTerminalStartupPresetMessage(`Deleted preset: ${preset.name}`);
     setSaveStartupPresetOpen(false);
@@ -1266,7 +1336,10 @@ export function App() {
       console.error("widget template not found", request);
       return "";
     }
-    const input = makeWidgetInput(template, request.state);
+    const input = makeWidgetInput(
+      template,
+      applyWorkspaceDefaultsToWidgetState(request.widgetId, request.state, workspace.rootPath)
+    );
     const payload: {
       widgetKind: WidgetKind;
       title: string;
@@ -1283,7 +1356,7 @@ export function App() {
       payload.paneId = request.paneId;
     }
     return await createWidgetTabWithDriver(payload);
-  }, [createWidgetTabWithDriver, widgetTemplates]);
+  }, [createWidgetTabWithDriver, widgetTemplates, workspace.rootPath]);
 
   const openEdgePeekSnippetsAsTab = useCallback(() => {
     if (!edgePeekSnippetsState) return;
@@ -1459,14 +1532,31 @@ export function App() {
   }, [cancelEdgePeekClose]);
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(TERMINAL_STARTUP_PRESETS_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as unknown;
-      setTerminalStartupPresets(normalizeTerminalStartupPresets(parsed));
-    } catch (error) {
-      console.error("terminal startup presets load failed", error);
-    }
+    void (async () => {
+      try {
+        const stored = await window.localtermApi.workspace.getGlobalLibrary({
+          key: TERMINAL_STARTUP_PRESETS_STORAGE_KEY
+        });
+        const legacyRaw =
+          window.localStorage.getItem(LEGACY_TERMINAL_STARTUP_PRESETS_STORAGE_KEY) ??
+          window.localStorage.getItem(TERMINAL_STARTUP_PRESETS_STORAGE_KEY);
+        const raw = stored.value != null ? JSON.stringify(stored.value) : legacyRaw;
+        if (!raw) return;
+        const parsed = JSON.parse(raw) as unknown;
+        const normalized = normalizeTerminalStartupPresets(parsed);
+        setTerminalStartupPresets(normalized);
+        if (stored.value == null && normalized.length > 0) {
+          await window.localtermApi.workspace.setGlobalLibrary({
+            key: TERMINAL_STARTUP_PRESETS_STORAGE_KEY,
+            value: normalized
+          });
+          window.localStorage.removeItem(LEGACY_TERMINAL_STARTUP_PRESETS_STORAGE_KEY);
+          window.localStorage.removeItem(TERMINAL_STARTUP_PRESETS_STORAGE_KEY);
+        }
+      } catch (error) {
+        console.error("terminal startup presets load failed", error);
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -1626,15 +1716,17 @@ export function App() {
     workspaceBootstrapped
   ]);
 
-  const createEmptyWorkspace = useCallback(async () => {
+  const createWorkspace = useCallback(async (options?: { name?: string; rootPath?: string }) => {
     const now = Date.now();
     const id = `workspace-${now.toString(36)}`;
-    const name = `Workspace ${workspaceList.workspaces.length + 1}`;
+    const name = options?.name?.trim() || `Workspace ${workspaceList.workspaces.length + 1}`;
+    const rootPath = options?.rootPath?.trim() || "";
     const nextSnapshot = {
       layout: {
         ...createDefaultWorkspaceLayout(now),
         id,
-        name
+        name,
+        rootPath
       },
       tabs: []
     } as WorkspaceSnapshot;
@@ -1661,6 +1753,26 @@ export function App() {
     saveWorkspaceNow,
     workspaceList.workspaces.length
   ]);
+
+  const chooseCreateWorkspaceRootPath = useCallback(async () => {
+    try {
+      const selected = await window.localtermApi.file.pickDirectory();
+      if (!selected.path) return;
+      setCreateWorkspaceRootPath(selected.path);
+    } catch (error) {
+      console.error("workspace root path pick failed", error);
+    }
+  }, []);
+
+  const submitCreateWorkspace = useCallback(async () => {
+    await createWorkspace({
+      name: createWorkspaceName,
+      rootPath: createWorkspaceRootPath
+    });
+    setCreateWorkspaceOpen(false);
+    setCreateWorkspaceName("");
+    setCreateWorkspaceRootPath("");
+  }, [createWorkspace, createWorkspaceName, createWorkspaceRootPath]);
 
   const renameWorkspace = useCallback(async () => {
     if (!workspaceRenameTargetId) return;
@@ -1697,6 +1809,51 @@ export function App() {
     workspace.id,
     workspaceRenameName,
     workspaceRenameTargetId
+  ]);
+
+  const chooseWorkspaceRootPath = useCallback(async () => {
+    try {
+      const selected = await window.localtermApi.file.pickDirectory();
+      if (!selected.path) return;
+      setWorkspaceRootPathDraft(selected.path);
+    } catch (error) {
+      console.error("workspace root path pick failed", error);
+    }
+  }, []);
+
+  const saveWorkspaceRootPath = useCallback(async () => {
+    if (!workspaceRootPathTargetId) return;
+    const nextRootPath = workspaceRootPathDraft.trim();
+    setWorkspaceActionBusy(true);
+    try {
+      if (workspaceRootPathTargetId === workspace.id) {
+        const snapshot = buildWorkspaceSnapshot({
+          rootPath: nextRootPath
+        });
+        workspaceSnapshotCacheRef.current.set(snapshot.layout.id, snapshot);
+        await window.localtermApi.workspace.save(snapshot);
+        await restoreWorkspaceSnapshot(snapshot, { killExisting: false, coldBoot: false });
+      } else {
+        const cached = workspaceSnapshotCacheRef.current.get(workspaceRootPathTargetId);
+        const snapshot = cached ?? (await window.localtermApi.workspace.load({ id: workspaceRootPathTargetId }));
+        snapshot.layout.rootPath = nextRootPath;
+        snapshot.layout.updatedAt = Date.now();
+        workspaceSnapshotCacheRef.current.set(snapshot.layout.id, snapshot);
+        await window.localtermApi.workspace.save(snapshot);
+      }
+      await refreshWorkspaceList();
+    } finally {
+      setWorkspaceActionBusy(false);
+      setWorkspaceRootPathTargetId(null);
+      setWorkspaceRootPathDraft("");
+    }
+  }, [
+    buildWorkspaceSnapshot,
+    refreshWorkspaceList,
+    restoreWorkspaceSnapshot,
+    workspace.id,
+    workspaceRootPathDraft,
+    workspaceRootPathTargetId
   ]);
 
   const closeWorkspaceById = useCallback(async (workspaceId: string) => {
@@ -1742,6 +1899,58 @@ export function App() {
     saveWorkspaceNow,
     workspace.id
   ]);
+
+  const deleteWorkspaceById = useCallback(async (workspaceId: string) => {
+    const entry = workspaceById.get(workspaceId);
+    const confirmed = window.confirm(
+      `Delete workspace "${entry?.name ?? workspaceId}"?\n\nThis removes the saved workspace snapshot from disk.`
+    );
+    if (!confirmed) return;
+
+    setWorkspaceActionBusy(true);
+    try {
+      workspaceSnapshotCacheRef.current.delete(workspaceId);
+      await window.localtermApi.workspace.delete({ id: workspaceId });
+      const listed = await refreshWorkspaceList();
+
+      if (workspaceId !== workspace.id) {
+        return;
+      }
+
+      const nextId = listed.workspaces.find((item) => !item.isClosed)?.id;
+      if (nextId) {
+        const cached = workspaceSnapshotCacheRef.current.get(nextId);
+        const snapshot = cached ?? (await window.localtermApi.workspace.load({ id: nextId }));
+        await restoreWorkspaceSnapshot(snapshot, { killExisting: false, coldBoot: false });
+        await refreshWorkspaceList();
+        return;
+      }
+
+      const now = Date.now();
+      const fresh = {
+        layout: createDefaultWorkspaceLayout(now),
+        tabs: []
+      } as WorkspaceSnapshot;
+      await restoreWorkspaceSnapshot(fresh, { killExisting: true, coldBoot: true });
+    } finally {
+      setWorkspaceActionBusy(false);
+    }
+  }, [
+    refreshWorkspaceList,
+    restoreWorkspaceSnapshot,
+    workspace.id,
+    workspaceById
+  ]);
+
+  const openStorageInfoDialog = useCallback(async () => {
+    try {
+      const info = await window.localtermApi.workspace.getStorageInfo();
+      setWorkspaceStorageInfo(info);
+      setStorageInfoOpen(true);
+    } catch (error) {
+      console.error("load workspace storage info failed", error);
+    }
+  }, []);
 
   const commitTabRename = useCallback(() => {
     const nextTitle = renamingTitle.trim();
@@ -2267,6 +2476,7 @@ export function App() {
             isActive={tab.id === activeTabId}
             workspaceId={workspace.id}
             workspaceName={workspace.name}
+            workspaceRootPath={workspace.rootPath}
             tabsSummary={tabsSummary}
             webviewPreloadUrl={widgetWebviewPreloadUrl}
             onUpdateInput={updateTabInput}
@@ -2635,6 +2845,9 @@ export function App() {
                   Workspaces
                 </div>
                 <div className="mt-1 truncate text-sm font-medium text-zinc-100">{workspace.name}</div>
+                <div className="mt-1 truncate text-[11px] text-zinc-500">
+                  {workspace.rootPath || "No root directory"}
+                </div>
               </div>
             ) : null}
             <Button
@@ -2679,7 +2892,9 @@ export function App() {
                   className="w-full rounded px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
                   onClick={() => {
                     setPlusMenuOpen(false);
-                    void createEmptyWorkspace();
+                    setCreateWorkspaceName(`Workspace ${workspaceList.workspaces.length + 1}`);
+                    setCreateWorkspaceRootPath("");
+                    setCreateWorkspaceOpen(true);
                   }}
                 >
                   New Workspace
@@ -2803,6 +3018,29 @@ export function App() {
                 onClick={() => {
                   if (!hasActiveWorkspace) return;
                   setSettingsMenuOpen(false);
+                  setWorkspaceRootPathTargetId(workspace.id);
+                  setWorkspaceRootPathDraft(workspace.rootPath || "");
+                }}
+                disabled={!hasActiveWorkspace}
+              >
+                Edit Root Directory
+              </button>
+              <button
+                type="button"
+                className="w-full rounded px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+                onClick={() => {
+                  setSettingsMenuOpen(false);
+                  void openStorageInfoDialog();
+                }}
+              >
+                Storage Paths
+              </button>
+              <button
+                type="button"
+                className="w-full rounded px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+                onClick={() => {
+                  if (!hasActiveWorkspace) return;
+                  setSettingsMenuOpen(false);
                   setSaveAsOpen(true);
                 }}
                 disabled={!hasActiveWorkspace}
@@ -2882,6 +3120,7 @@ export function App() {
                     isActive={edgePeekSnippetsOpen}
                     workspaceId={workspace.id}
                     workspaceName={workspace.name}
+                    workspaceRootPath={workspace.rootPath}
                     tabsSummary={tabsSummary}
                     webviewPreloadUrl={widgetWebviewPreloadUrl}
                     onUpdateInput={(_, input) => updateEdgePeekSnippetsInput(input)}
@@ -3095,6 +3334,29 @@ export function App() {
               const targetId = workspaceContextMenu.workspaceId;
               setWorkspaceContextMenu(null);
               void (async () => {
+                try {
+                  const snapshot =
+                    targetId === workspace.id
+                      ? buildWorkspaceSnapshot()
+                      : (workspaceSnapshotCacheRef.current.get(targetId) ??
+                        (await window.localtermApi.workspace.load({ id: targetId })));
+                  setWorkspaceRootPathTargetId(targetId);
+                  setWorkspaceRootPathDraft(snapshot.layout.rootPath || "");
+                } catch (error) {
+                  console.error("open workspace root path editor failed", error);
+                }
+              })();
+            }}
+          >
+            Edit Root Directory
+          </button>
+          <button
+            type="button"
+            className="w-full rounded px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+            onClick={() => {
+              const targetId = workspaceContextMenu.workspaceId;
+              setWorkspaceContextMenu(null);
+              void (async () => {
                 if (targetId === workspace.id) {
                   if (canPersistCurrentWorkspace()) {
                     await saveWorkspaceNow();
@@ -3117,6 +3379,17 @@ export function App() {
             }}
           >
             Close
+          </button>
+          <button
+            type="button"
+            className="w-full rounded px-3 py-2 text-left text-sm text-red-300 hover:bg-zinc-800"
+            onClick={() => {
+              const targetId = workspaceContextMenu.workspaceId;
+              setWorkspaceContextMenu(null);
+              void deleteWorkspaceById(targetId);
+            }}
+          >
+            Delete
           </button>
         </div>
       ) : null}
@@ -3261,20 +3534,39 @@ export function App() {
           </DialogHeader>
           <div className="max-h-[50vh] space-y-2 overflow-auto">
             {[...closedWorkspaceEntries, ...openWorkspaceEntries].map((entry) => (
-              <button
+              <div
                 key={entry.id}
-                type="button"
-                className="flex w-full items-center justify-between rounded-md border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-left text-sm text-zinc-100 hover:border-zinc-600"
-                onClick={() => {
-                  setOpenWorkspacePicker(false);
-                  void switchWorkspace(entry.id);
-                }}
+                className="flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/60 px-3 py-2"
               >
-                <span className="truncate">{entry.name}</span>
-                <span className="text-xs text-zinc-400">
-                  {entry.isClosed ? "History" : "Open"} · {entry.id}
-                </span>
-              </button>
+                <button
+                  type="button"
+                  className="min-w-0 flex-1 text-left text-sm text-zinc-100 hover:text-white"
+                  onClick={() => {
+                    setOpenWorkspacePicker(false);
+                    void switchWorkspace(entry.id);
+                  }}
+                >
+                  <div className="truncate">{entry.name}</div>
+                  <div className="mt-1 text-xs text-zinc-400">
+                    {entry.isClosed ? "History" : "Open"} · {entry.id}
+                  </div>
+                </button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-8 px-2 text-xs text-red-300 hover:text-red-200"
+                  title="Delete Workspace"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void (async () => {
+                      await deleteWorkspaceById(entry.id);
+                      await refreshWorkspaceList();
+                    })();
+                  }}
+                >
+                  Delete
+                </Button>
+              </div>
             ))}
           </div>
         </DialogContent>
@@ -3301,6 +3593,9 @@ export function App() {
             <div className="flex flex-col gap-2 md:flex-row md:items-center">
               <div className="min-w-0 flex-1">
                 <div className="mb-1 text-xs font-medium text-zinc-300">Startup Presets</div>
+                <div className="mb-2 text-[11px] text-zinc-500">
+                  Current workspace presets are marked with `Current`.
+                </div>
                 <select
                   className="h-10 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none"
                   value={selectedTerminalStartupPresetId}
@@ -3309,9 +3604,9 @@ export function App() {
                   }}
                 >
                   <option value="">Select a preset</option>
-                  {terminalStartupPresets.map((preset) => (
+                  {orderedTerminalStartupPresets.map((preset) => (
                     <option key={preset.id} value={preset.id}>
-                      {preset.name}
+                      {preset.workspaceScopeId === workspace.id ? `[Current] ${preset.name}` : preset.name}
                     </option>
                   ))}
                 </select>
@@ -3336,7 +3631,7 @@ export function App() {
             <div className="mt-2 flex items-center justify-between gap-3 text-xs text-zinc-400">
               <span className="truncate">
                 {selectedTerminalStartupPreset
-                  ? `${selectedTerminalStartupPreset.scripts.length} scripts · used ${selectedTerminalStartupPreset.usageCount} times`
+                  ? `${selectedTerminalStartupPreset.workspaceScopeId === workspace.id ? "Current workspace · " : ""}${selectedTerminalStartupPreset.scripts.length} scripts · used ${selectedTerminalStartupPreset.usageCount} times`
                   : `${terminalStartupPresets.length} presets available`}
               </span>
               <span className="truncate text-right text-zinc-500">
@@ -3465,6 +3760,58 @@ export function App() {
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={createWorkspaceOpen}
+        onOpenChange={(open) => {
+          setCreateWorkspaceOpen(open);
+          if (!open) {
+            setCreateWorkspaceName("");
+            setCreateWorkspaceRootPath("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New Workspace</DialogTitle>
+            <DialogDescription>Create a workspace and optionally bind a default root directory.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <input
+              className="h-9 rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none"
+              value={createWorkspaceName}
+              onChange={(event) => setCreateWorkspaceName(event.target.value)}
+              placeholder="Workspace name"
+            />
+            <div className="grid grid-cols-[1fr_auto] gap-2">
+              <input
+                className="h-9 rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none"
+                value={createWorkspaceRootPath}
+                onChange={(event) => setCreateWorkspaceRootPath(event.target.value)}
+                placeholder="Root directory (optional)"
+              />
+              <Button variant="outline" onClick={() => void chooseCreateWorkspaceRootPath()}>
+                Browse
+              </Button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCreateWorkspaceOpen(false);
+                setCreateWorkspaceName("");
+                setCreateWorkspaceRootPath("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={() => void submitCreateWorkspace()} disabled={!createWorkspaceName.trim()}>
+              Create Workspace
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={workspaceRenameTargetId !== null} onOpenChange={(open) => {
         if (!open) {
           setWorkspaceRenameTargetId(null);
@@ -3494,6 +3841,98 @@ export function App() {
             </Button>
             <Button onClick={() => void renameWorkspace()} disabled={!workspaceRenameName.trim()}>
               Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={workspaceRootPathTargetId !== null} onOpenChange={(open) => {
+        if (!open) {
+          setWorkspaceRootPathTargetId(null);
+          setWorkspaceRootPathDraft("");
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Workspace Root Directory</DialogTitle>
+            <DialogDescription>
+              Set the default directory for terminal, diff and file widgets in this workspace.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid grid-cols-[1fr_auto_auto] gap-2">
+              <input
+                className="h-9 rounded-md border border-zinc-700 bg-zinc-950 px-3 text-sm text-zinc-100 outline-none"
+                value={workspaceRootPathDraft}
+                onChange={(event) => setWorkspaceRootPathDraft(event.target.value)}
+                placeholder="Root directory (optional)"
+              />
+              <Button variant="outline" onClick={() => void chooseWorkspaceRootPath()}>
+                Browse
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setWorkspaceRootPathDraft("")}
+                disabled={!workspaceRootPathDraft}
+              >
+                Clear
+              </Button>
+            </div>
+            <div className="text-xs text-zinc-500">
+              Leave empty to disable workspace-level default path binding.
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setWorkspaceRootPathTargetId(null);
+                setWorkspaceRootPathDraft("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={() => void saveWorkspaceRootPath()} disabled={workspaceActionBusy}>
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={storageInfoOpen} onOpenChange={setStorageInfoOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Storage Paths</DialogTitle>
+            <DialogDescription>
+              Current workspace and global library files are stored under these paths.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-sm text-zinc-200">
+            {workspaceStorageInfo ? (
+              [
+                ["User Data", workspaceStorageInfo.userDataDir],
+                ["Store Root", workspaceStorageInfo.storeRoot],
+                ["Workspace Index", workspaceStorageInfo.workspaceIndexPath],
+                ["Widget Registry", workspaceStorageInfo.widgetRegistryPath],
+                ["Global Library Dir", workspaceStorageInfo.globalLibraryDir],
+                ["Command Snippets", workspaceStorageInfo.commandSnippetsPath],
+                ["Todos", workspaceStorageInfo.todosPath],
+                ["Terminal Presets", workspaceStorageInfo.terminalStartupPresetsPath]
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2">
+                  <div className="text-xs text-zinc-400">{label}</div>
+                  <div className="mt-1 break-all font-mono text-[12px] text-zinc-100">{value}</div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-400">
+                Failed to load storage paths.
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStorageInfoOpen(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

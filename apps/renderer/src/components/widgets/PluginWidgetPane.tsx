@@ -18,6 +18,7 @@ type Props = {
   isActive: boolean;
   workspaceId: string;
   workspaceName: string;
+  workspaceRootPath: string;
   tabsSummary: WidgetTabSummary[];
   webviewPreloadUrl: string | null;
   onUpdateInput: (tabId: string, input: Record<string, unknown>) => void;
@@ -132,6 +133,7 @@ export function PluginWidgetPane({
   isActive,
   workspaceId,
   workspaceName,
+  workspaceRootPath,
   tabsSummary,
   webviewPreloadUrl,
   onUpdateInput,
@@ -202,7 +204,8 @@ export function PluginWidgetPane({
                 isActive: currentActiveRef.current,
                 input,
                 workspaceId,
-                workspaceName
+                workspaceName,
+                workspaceRootPath
               }
             };
           }
@@ -275,7 +278,8 @@ export function PluginWidgetPane({
               ok: true,
               result: {
                 id: workspaceId,
-                name: workspaceName
+                name: workspaceName,
+                rootPath: workspaceRootPath
               }
             };
           }
@@ -298,6 +302,76 @@ export function PluginWidgetPane({
               return buildErrorResponse(requestId, "INVALID_ARGS", "tabId is required");
             }
             onActivateTab(tabId);
+            return { requestId, ok: true, result: { ok: true } };
+          }
+          case "storage.get": {
+            const key = typeof params?.key === "string" ? params.key.trim() : "";
+            if (!key) {
+              return buildErrorResponse(requestId, "INVALID_ARGS", "key is required");
+            }
+            const allowedKeys = new Set([
+              "command-snippets",
+              "todos",
+              "terminal-startup-presets"
+            ]);
+            if (!allowedKeys.has(key)) {
+              return buildErrorResponse(requestId, "INVALID_ARGS", "unsupported storage key");
+            }
+            const stored = await window.localtermApi.workspace.getGlobalLibrary({ key: key as never });
+            return {
+              requestId,
+              ok: true,
+              result: {
+                value: stored.value == null ? null : JSON.stringify(stored.value)
+              }
+            };
+          }
+          case "storage.set": {
+            const key = typeof params?.key === "string" ? params.key.trim() : "";
+            if (!key) {
+              return buildErrorResponse(requestId, "INVALID_ARGS", "key is required");
+            }
+            if (typeof params?.value !== "string") {
+              return buildErrorResponse(requestId, "INVALID_ARGS", "value must be a string");
+            }
+            const allowedKeys = new Set([
+              "command-snippets",
+              "todos",
+              "terminal-startup-presets"
+            ]);
+            if (!allowedKeys.has(key)) {
+              return buildErrorResponse(requestId, "INVALID_ARGS", "unsupported storage key");
+            }
+            let parsedValue: unknown = null;
+            try {
+              parsedValue = JSON.parse(params.value);
+            } catch (error) {
+              return buildErrorResponse(
+                requestId,
+                "INVALID_ARGS",
+                error instanceof Error ? error.message : "storage value must be valid JSON"
+              );
+            }
+            await window.localtermApi.workspace.setGlobalLibrary({
+              key: key as never,
+              value: parsedValue
+            });
+            return { requestId, ok: true, result: { ok: true } };
+          }
+          case "storage.remove": {
+            const key = typeof params?.key === "string" ? params.key.trim() : "";
+            if (!key) {
+              return buildErrorResponse(requestId, "INVALID_ARGS", "key is required");
+            }
+            const allowedKeys = new Set([
+              "command-snippets",
+              "todos",
+              "terminal-startup-presets"
+            ]);
+            if (!allowedKeys.has(key)) {
+              return buildErrorResponse(requestId, "INVALID_ARGS", "unsupported storage key");
+            }
+            await window.localtermApi.workspace.removeGlobalLibrary({ key: key as never });
             return { requestId, ok: true, result: { ok: true } };
           }
           case "fs.pickDirectory": {

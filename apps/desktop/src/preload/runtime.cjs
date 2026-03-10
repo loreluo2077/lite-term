@@ -16,7 +16,11 @@ const api = {
     list: () => ipcRenderer.invoke("workspace:list"),
     close: (payload) => ipcRenderer.invoke("workspace:close", payload),
     delete: (payload) => ipcRenderer.invoke("workspace:delete", payload),
-    getDefault: () => ipcRenderer.invoke("workspace:getDefault")
+    getDefault: () => ipcRenderer.invoke("workspace:getDefault"),
+    getGlobalLibrary: (payload) => ipcRenderer.invoke("workspace:globalLibrary:get", payload),
+    setGlobalLibrary: (payload) => ipcRenderer.invoke("workspace:globalLibrary:set", payload),
+    removeGlobalLibrary: (payload) => ipcRenderer.invoke("workspace:globalLibrary:remove", payload),
+    getStorageInfo: () => ipcRenderer.invoke("workspace:storageInfo")
   },
   widgetRegistry: {
     save: (payload) => ipcRenderer.invoke("widgetRegistry:save", payload),

@@ -175,6 +175,19 @@ body {
   background: rgba(91, 33, 182, 0.28);
 }
 
+.snippet-scope-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  background: rgba(8, 47, 73, 0.62);
+  color: #d8f3ff;
+  font-size: 10px;
+  line-height: 1;
+}
+
 .snippet-detail {
   display: grid;
   min-height: 0;

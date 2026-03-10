@@ -174,12 +174,18 @@ async function runHumanStep(pageHandle, testInfo, label, action) {
   });
 }
 
-async function createWorkspaceFromMenu(pageHandle, testInfo) {
+async function createWorkspaceFromMenu(pageHandle, testInfo, options = {}) {
   await runHumanStep(pageHandle, testInfo, "create-workspace", async () => {
     const workspaceMenuButton = pageHandle.getByTitle("Workspace Menu");
     await expect(workspaceMenuButton).toBeVisible({ timeout: 30_000 });
     await workspaceMenuButton.click();
     await pageHandle.getByRole("button", { name: "New Workspace" }).click();
+    await expect(pageHandle.getByRole("heading", { name: "New Workspace" })).toBeVisible();
+    await pageHandle.getByPlaceholder("Workspace name").fill(`Workspace ${Date.now().toString(36)}`);
+    if (typeof options.rootPath === "string" && options.rootPath.length > 0) {
+      await pageHandle.getByPlaceholder("Root directory (optional)").fill(options.rootPath);
+    }
+    await pageHandle.getByRole("button", { name: "Create Workspace" }).click();
     await expect(pageHandle.getByText("No active workspace")).toHaveCount(0);
   });
 }
@@ -593,8 +599,69 @@ test("terminal startup preset save-as works", async ({}, testInfo) => {
     await page.getByPlaceholder("Preset name").fill(presetName);
     await page.getByRole("button", { name: /^Save$/ }).click();
     await expect(page.getByPlaceholder("Preset name")).toHaveCount(0);
-    await expect(page.locator("select option").filter({ hasText: presetName })).toHaveCount(1);
+    await expect(page.locator("select option").filter({ hasText: `[Current] ${presetName}` })).toHaveCount(1);
     await expect(page.getByText(`Saved preset: ${presetName}`)).toBeVisible();
+  });
+});
+
+test("workspace root directory can be edited from settings", async ({}, testInfo) => {
+  await createWorkspaceFromMenu(page, testInfo);
+  const rootPath = `/tmp/localterm-e2e-root-${Date.now().toString(36)}`;
+
+  await runHumanStep(page, testInfo, "open-workspace-root-editor", async () => {
+    await page.getByTitle("Settings").click();
+    await page.getByRole("button", { name: "Edit Root Directory" }).click();
+    await expect(page.getByRole("heading", { name: "Edit Workspace Root Directory" })).toBeVisible();
+  });
+
+  await runHumanStep(page, testInfo, "save-workspace-root-directory", async () => {
+    const input = page.getByPlaceholder("Root directory (optional)");
+    await input.fill(rootPath);
+    await page.getByRole("button", { name: /^Save$/ }).click();
+    await expect(page.getByRole("heading", { name: "Edit Workspace Root Directory" })).toHaveCount(0);
+  });
+
+  await runHumanStep(page, testInfo, "reopen-workspace-root-editor", async () => {
+    await page.getByTitle("Settings").click();
+    await page.getByRole("button", { name: "Edit Root Directory" }).click();
+    await expect(page.getByPlaceholder("Root directory (optional)")).toHaveValue(rootPath);
+    await page.getByRole("button", { name: "Cancel" }).click();
+  });
+});
+
+test("settings can show storage paths", async ({}, testInfo) => {
+  await createWorkspaceFromMenu(page, testInfo);
+
+  await runHumanStep(page, testInfo, "open-storage-paths", async () => {
+    await page.getByTitle("Settings").click();
+    await page.getByRole("button", { name: "Storage Paths" }).click();
+    await expect(page.getByRole("heading", { name: "Storage Paths" })).toBeVisible();
+    await expect(page.getByText(/workspace-store/).first()).toBeVisible();
+    await page.getByRole("button", { name: "Close" }).click();
+  });
+});
+
+test("workspace can be deleted from picker", async ({}, testInfo) => {
+  await createWorkspaceFromMenu(page, testInfo);
+  const activeWorkspaceName = await getActiveWorkspaceName(page);
+  expect(activeWorkspaceName).toBeTruthy();
+
+  await runHumanStep(page, testInfo, "delete-workspace-from-picker", async () => {
+    await page.getByTitle("Workspace Menu").click();
+    await page.getByRole("button", { name: "Open Saved Workspace" }).click();
+    await expect(page.getByRole("heading", { name: "Open Workspace" })).toBeVisible();
+
+    const row = page.locator("div").filter({
+      has: page.getByText(exactTextPattern(activeWorkspaceName))
+    }).filter({
+      has: page.getByRole("button", { name: "Delete" })
+    }).first();
+    await expect(row).toBeVisible();
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await row.getByRole("button", { name: "Delete" }).click();
+
+    await expect(page.getByText(exactTextPattern(activeWorkspaceName))).toHaveCount(0);
   });
 });
 
@@ -687,6 +754,9 @@ test("workspace switch keeps opencode TUI session alive", async ({}, testInfo) =
   await runHumanStep(page, testInfo, "switch-to-new-workspace-while-opencode-running", async () => {
     await page.getByTitle("Workspace Menu").click();
     await page.getByRole("button", { name: "New Workspace" }).click();
+    await expect(page.getByRole("heading", { name: "New Workspace" })).toBeVisible();
+    await page.getByPlaceholder("Workspace name").fill(`Workspace ${Date.now().toString(36)}`);
+    await page.getByRole("button", { name: "Create Workspace" }).click();
     await expect(page.getByRole("button", { name: "Pane Widget Menu" }).first()).toBeVisible();
   });
 

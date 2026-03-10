@@ -104,6 +104,7 @@ export function createDefaultWorkspaceLayout(now = Date.now()): WorkspaceLayout 
     schemaVersion: 3,
     id: workspaceId,
     name: "Workspace",
+    rootPath: "",
     activePaneId: "pane-1",
     createdAt: now,
     updatedAt: now,

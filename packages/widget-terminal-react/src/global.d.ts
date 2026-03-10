@@ -15,6 +15,7 @@ type WidgetApiContext = {
   input: ExtensionWidgetInput;
   workspaceId: string;
   workspaceName: string;
+  workspaceRootPath: string;
 };
 
 type WidgetStateListener = (state: Record<string, unknown>) => void;
@@ -68,7 +69,7 @@ declare global {
         onDidChange(listener: WidgetStateListener): () => void;
       };
       workspace: {
-        getCurrent(): Promise<{ id: string; name: string }>;
+        getCurrent(): Promise<{ id: string; name: string; rootPath: string }>;
         listTabs(): Promise<Array<{ tabId: string; title: string; kind: string }>>;
         activateTab(tabId: string): Promise<{ ok: true }>;
       };

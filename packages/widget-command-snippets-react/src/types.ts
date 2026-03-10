@@ -13,6 +13,9 @@ export interface CommandSnippet {
   tags: string[];
   projectScope?: string | null;
   agentScope?: string | null;
+  workspaceScopeId?: string | null;
+  workspaceScopeName?: string | null;
+  workspaceRootPath?: string | null;
   isPinned: boolean;
   usageCount: number;
   lastUsedAt?: string | null;
@@ -33,6 +36,12 @@ export type SnippetSortKind = "smart" | "updated" | "used" | "title";
 
 export type CommandSnippetsWidgetState = {
   snippets: CommandSnippet[];
+};
+
+export type CommandSnippetsWorkspaceContext = {
+  workspaceId: string;
+  workspaceName: string;
+  workspaceRootPath: string;
 };
 
 export type SnippetDraftInput = {

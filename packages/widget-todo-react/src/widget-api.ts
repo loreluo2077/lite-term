@@ -6,6 +6,7 @@ export type WidgetContext = {
   isActive: boolean;
   workspaceId: string;
   workspaceName: string;
+  workspaceRootPath: string;
 };
 
 function ensureWidgetApi() {
@@ -37,7 +38,8 @@ export function useWidgetContext() {
           tabTitle: ctx.tabTitle,
           isActive: ctx.isActive,
           workspaceId: ctx.workspaceId,
-          workspaceName: ctx.workspaceName
+          workspaceName: ctx.workspaceName,
+          workspaceRootPath: typeof ctx.workspaceRootPath === "string" ? ctx.workspaceRootPath : ""
         });
       })
       .catch((error) => {

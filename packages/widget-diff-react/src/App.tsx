@@ -160,8 +160,12 @@ export default function App() {
         if (disposed) return;
         const normalized = normalizeState(stored);
         applyState(normalized);
-        if (normalized.repoPath) {
-          void loadRepoDiff(normalized.repoPath);
+        const repoPath = normalized.repoPath ?? context?.workspaceRootPath ?? null;
+        if (repoPath && repoPath !== normalized.repoPath) {
+          await api.state.patch({ repoPath });
+        }
+        if (repoPath) {
+          void loadRepoDiff(repoPath);
         }
       } catch (nextError) {
         if (disposed) return;

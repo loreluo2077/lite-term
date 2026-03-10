@@ -8,6 +8,7 @@ import { errorMessage, getWidgetApi } from "./widget-api";
 type TerminalWidgetState = {
   cols: number;
   rows: number;
+  cwd: string;
   sessionId: string;
   port: number;
   pid: number;
@@ -37,6 +38,7 @@ type BootPhase =
 const DEFAULT_STATE: TerminalWidgetState = {
   cols: 120,
   rows: 30,
+  cwd: "",
   sessionId: "",
   port: 0,
   pid: 0,
@@ -52,6 +54,7 @@ function normalizeState(raw: Record<string, unknown> | null | undefined): Termin
   return {
     cols: Number.isFinite(source.cols) ? Math.max(20, Math.floor(source.cols as number)) : 120,
     rows: Number.isFinite(source.rows) ? Math.max(5, Math.floor(source.rows as number)) : 30,
+    cwd: typeof source.cwd === "string" ? source.cwd : "",
     sessionId: typeof source.sessionId === "string" ? source.sessionId : "",
     port: Number.isFinite(source.port) ? Math.max(0, Math.floor(source.port as number)) : 0,
     pid: Number.isFinite(source.pid) ? Math.max(0, Math.floor(source.pid as number)) : 0,
@@ -383,6 +386,7 @@ export default function App() {
     const created = await api.terminal.create({
       cols: wantedCols,
       rows: wantedRows,
+      ...(snapshot.cwd ? { cwd: snapshot.cwd } : {}),
       startupScripts: snapshot.startupScripts
     });
 
@@ -521,7 +525,12 @@ export default function App() {
 
         const stored = await api.state.get();
         if (disposed) return;
-        applyState(normalizeState(stored));
+        const normalized = normalizeState(stored);
+        if (!normalized.cwd && context?.workspaceRootPath) {
+          normalized.cwd = context.workspaceRootPath;
+          await api.state.patch({ cwd: normalized.cwd });
+        }
+        applyState(normalized);
 
         await ensureSession();
         scheduleTerminalSizeSync();

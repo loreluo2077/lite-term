@@ -51,4 +51,5 @@ export type WidgetContextPayload = {
   input: ExtensionWidgetInput;
   workspaceId: string;
   workspaceName: string;
+  workspaceRootPath: string;
 };

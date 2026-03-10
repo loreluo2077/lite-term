@@ -24,6 +24,7 @@ import {
 import type {
   CommandSnippet,
   CommandSnippetsWidgetState,
+  CommandSnippetsWorkspaceContext,
   SnippetDraftInput,
   SnippetFilterKind,
   SnippetSortKind
@@ -33,6 +34,8 @@ import { errorMessage, getWidgetApi } from "./widget-api";
 const DEFAULT_STATE: CommandSnippetsWidgetState = {
   snippets: []
 };
+const GLOBAL_SNIPPETS_STORAGE_KEY = "command-snippets";
+const LEGACY_SNIPPETS_STORAGE_KEY = "localterm.command-snippets.library.v1";
 
 type EditorState = {
   open: boolean;
@@ -53,7 +56,11 @@ function resolveSnippetIndex(snippets: CommandSnippet[], snippetId: string | nul
 
 export default function App() {
   const api = getWidgetApi();
-  const [workspaceName, setWorkspaceName] = useState("current-workspace");
+  const [workspaceContext, setWorkspaceContext] = useState<CommandSnippetsWorkspaceContext>({
+    workspaceId: "",
+    workspaceName: "current-workspace",
+    workspaceRootPath: ""
+  });
   const [snippets, setSnippets] = useState<CommandSnippet[]>(DEFAULT_STATE.snippets);
   const snippetsRef = useRef<CommandSnippet[]>(DEFAULT_STATE.snippets);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -79,6 +86,11 @@ export default function App() {
   const persistSnippets = useCallback(
     async (next: CommandSnippet[]) => {
       applySnippets(next);
+      try {
+        await api.storage.set(GLOBAL_SNIPPETS_STORAGE_KEY, JSON.stringify(next));
+      } catch (error) {
+        console.error("persist command snippets failed", error);
+      }
       await api.state.patch({ snippets: next });
     },
     [api, applySnippets]
@@ -162,6 +174,9 @@ export default function App() {
     const disposeState = api.state.onDidChange((nextState) => {
       if (disposed) return;
       const normalized = normalizeWidgetState(nextState);
+      if (normalized.snippets.length === 0 && snippetsRef.current.length > 0) {
+        return;
+      }
       applySnippets(normalized.snippets);
     });
 
@@ -169,13 +184,32 @@ export default function App() {
       try {
         const context = await api.widget.getContext();
         if (context?.workspaceName) {
-          setWorkspaceName(context.workspaceName);
+          setWorkspaceContext({
+            workspaceId: context.workspaceId,
+            workspaceName: context.workspaceName,
+            workspaceRootPath: typeof context.workspaceRootPath === "string" ? context.workspaceRootPath : ""
+          });
         }
 
         const stored = await api.state.get();
         if (disposed) return;
-        const normalized = normalizeWidgetState(stored);
+        const hostStored = await api.storage.get(GLOBAL_SNIPPETS_STORAGE_KEY);
+        const rawLibrary =
+          hostStored?.value ??
+          window.localStorage.getItem(LEGACY_SNIPPETS_STORAGE_KEY) ??
+          window.localStorage.getItem(GLOBAL_SNIPPETS_STORAGE_KEY);
+        const normalized = rawLibrary
+          ? normalizeWidgetState({ snippets: JSON.parse(rawLibrary) })
+          : normalizeWidgetState(stored);
         applySnippets(normalized.snippets);
+        if (rawLibrary && !hostStored?.value) {
+          await api.storage.set(GLOBAL_SNIPPETS_STORAGE_KEY, rawLibrary);
+          window.localStorage.removeItem(LEGACY_SNIPPETS_STORAGE_KEY);
+          window.localStorage.removeItem(GLOBAL_SNIPPETS_STORAGE_KEY);
+        }
+        if (!rawLibrary && normalized.snippets.length > 0) {
+          await api.storage.set(GLOBAL_SNIPPETS_STORAGE_KEY, JSON.stringify(normalized.snippets));
+        }
       } catch (error) {
         if (disposed) return;
         setStatusMessage(errorMessage(error));
@@ -199,9 +233,9 @@ export default function App() {
   }, [refreshTerminalAvailability]);
 
   const filteredSnippets = useMemo(() => {
-    const matched = snippets.filter((entry) => matchSnippet(entry, query, filter, workspaceName));
-    return sortSnippets(matched, sort);
-  }, [filter, query, snippets, sort, workspaceName]);
+    const matched = snippets.filter((entry) => matchSnippet(entry, query, filter, workspaceContext));
+    return sortSnippets(matched, sort, workspaceContext);
+  }, [filter, query, snippets, sort, workspaceContext]);
 
   useEffect(() => {
     if (filteredSnippets.length === 0) {
@@ -303,7 +337,7 @@ export default function App() {
   const handleSaveFromModal = useCallback(
     (draft: SnippetDraftInput) => {
       if (editor.mode === "create") {
-        const created = createSnippetFromDraft(draft);
+        const created = createSnippetFromDraft(draft, workspaceContext);
         const next = [created, ...snippetsRef.current];
         void upsertAndPersist(next);
         setSelectedId(created.id);
@@ -325,7 +359,7 @@ export default function App() {
         snippetId: null
       });
     },
-    [editor.mode, selectedEditorSnippet, upsertAndPersist]
+    [editor.mode, selectedEditorSnippet, upsertAndPersist, workspaceContext]
   );
 
   const handleCopyContent = useCallback(async () => {
@@ -389,7 +423,7 @@ export default function App() {
           subtitle={`${filteredSnippets.length}/${snippets.length} snippets`}
         />
         <WidgetHeaderActions>
-          <span className="widget-chip max-w-[180px] truncate">{workspaceName}</span>
+          <span className="widget-chip max-w-[180px] truncate">{workspaceContext.workspaceName}</span>
           <button type="button" onClick={handleCreate} className="widget-button widget-button--accent">
             新建
           </button>
@@ -401,7 +435,7 @@ export default function App() {
           query={query}
           filter={filter}
           sort={sort}
-          workspaceName={workspaceName}
+          workspaceName={workspaceContext.workspaceRootPath || workspaceContext.workspaceName}
           onQueryChange={setQuery}
           onFilterChange={setFilter}
           onSortChange={setSort}
@@ -412,6 +446,8 @@ export default function App() {
         <SnippetList
           snippets={filteredSnippets}
           selectedId={selectedId}
+          currentWorkspaceId={workspaceContext.workspaceId}
+          currentWorkspaceRootPath={workspaceContext.workspaceRootPath}
           onSelect={setSelectedId}
           onTogglePin={handleTogglePin}
           onMoveSelection={moveSelection}
@@ -442,7 +478,7 @@ export default function App() {
         open={editor.open}
         mode={editor.mode}
         initialSnippet={selectedEditorSnippet}
-        workspaceName={workspaceName}
+        workspaceName={workspaceContext.workspaceRootPath || workspaceContext.workspaceName}
         onClose={() => {
           setEditor({
             open: false,

@@ -54,6 +54,7 @@ const builtinTemplates: WidgetTemplate[] = [
     defaultState: {
       cols: 120,
       rows: 30,
+      cwd: "",
       sessionId: "",
       port: 0,
       pid: 0,
@@ -91,6 +92,7 @@ const builtinTemplates: WidgetTemplate[] = [
     widgetId: "diff.review",
     title: "Diff",
     defaultState: {
+      repoPath: null,
       files: [],
       selectedPath: null
     },

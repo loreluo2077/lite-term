@@ -7,6 +7,7 @@ type WidgetApiContext = {
   input: ExtensionWidgetInput;
   workspaceId: string;
   workspaceName: string;
+  workspaceRootPath: string;
 };
 
 type WidgetStateListener = (state: Record<string, unknown>) => void;
@@ -24,7 +25,12 @@ declare global {
         onDidChange(listener: WidgetStateListener): () => void;
       };
       workspace: {
-        getCurrent(): Promise<{ id: string; name: string }>;
+        getCurrent(): Promise<{ id: string; name: string; rootPath: string }>;
+      };
+      storage: {
+        get(key: string): Promise<{ value: string | null }>;
+        set(key: string, value: string): Promise<{ ok: true }>;
+        remove(key: string): Promise<{ ok: true }>;
       };
     };
   }

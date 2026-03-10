@@ -1,6 +1,7 @@
 import type {
   CommandSnippet,
   CommandSnippetsWidgetState,
+  CommandSnippetsWorkspaceContext,
   CommandSnippetType,
   SnippetDraftInput,
   SnippetFilterKind,
@@ -63,6 +64,9 @@ export function normalizeSnippet(value: unknown): CommandSnippet | null {
       : [],
     projectScope: normalizeNullableField(source.projectScope),
     agentScope: normalizeNullableField(source.agentScope),
+    workspaceScopeId: normalizeNullableField(source.workspaceScopeId),
+    workspaceScopeName: normalizeNullableField(source.workspaceScopeName),
+    workspaceRootPath: normalizeNullableField(source.workspaceRootPath),
     isPinned: source.isPinned === true,
     usageCount: Number.isFinite(source.usageCount) ? Math.max(0, Math.floor(source.usageCount as number)) : 0,
     lastUsedAt: typeof source.lastUsedAt === "string" && source.lastUsedAt ? source.lastUsedAt : null,
@@ -90,12 +94,19 @@ export function matchSnippet(
   snippet: CommandSnippet,
   query: string,
   filter: SnippetFilterKind,
-  workspaceName: string
+  workspace: CommandSnippetsWorkspaceContext
 ) {
   if (filter === "pinned" && !snippet.isPinned) return false;
   if (filter === "current_project") {
-    const scope = snippet.projectScope?.toLowerCase().trim();
-    if (!scope || scope !== workspaceName.toLowerCase().trim()) return false;
+    const matchesWorkspace =
+      (workspace.workspaceId && snippet.workspaceScopeId === workspace.workspaceId) ||
+      (workspace.workspaceRootPath &&
+        snippet.workspaceRootPath?.toLowerCase().trim() === workspace.workspaceRootPath.toLowerCase().trim()) ||
+      (workspace.workspaceRootPath &&
+        snippet.projectScope?.toLowerCase().trim() === workspace.workspaceRootPath.toLowerCase().trim()) ||
+      (workspace.workspaceName &&
+        snippet.workspaceScopeName?.toLowerCase().trim() === workspace.workspaceName.toLowerCase().trim());
+    if (!matchesWorkspace) return false;
   }
   if (filter !== "all" && filter !== "pinned" && filter !== "current_project" && snippet.type !== filter) {
     return false;
@@ -122,10 +133,22 @@ function parseTime(value: string | null | undefined) {
   return Number.isFinite(next) ? next : 0;
 }
 
-export function sortSnippets(snippets: CommandSnippet[], sort: SnippetSortKind) {
+export function sortSnippets(
+  snippets: CommandSnippet[],
+  sort: SnippetSortKind,
+  workspace: CommandSnippetsWorkspaceContext
+) {
   const sorted = [...snippets];
 
   sorted.sort((left, right) => {
+    const leftScoped =
+      (workspace.workspaceId && left.workspaceScopeId === workspace.workspaceId) ||
+      (workspace.workspaceRootPath && left.workspaceRootPath === workspace.workspaceRootPath);
+    const rightScoped =
+      (workspace.workspaceId && right.workspaceScopeId === workspace.workspaceId) ||
+      (workspace.workspaceRootPath && right.workspaceRootPath === workspace.workspaceRootPath);
+    if (leftScoped !== rightScoped) return leftScoped ? -1 : 1;
+
     if (sort === "title") {
       return left.title.localeCompare(right.title, "zh-Hans-CN");
     }
@@ -148,7 +171,10 @@ export function sortSnippets(snippets: CommandSnippet[], sort: SnippetSortKind) 
   return sorted;
 }
 
-export function createSnippetFromDraft(draft: SnippetDraftInput): CommandSnippet {
+export function createSnippetFromDraft(
+  draft: SnippetDraftInput,
+  workspace: CommandSnippetsWorkspaceContext
+): CommandSnippet {
   const now = new Date().toISOString();
   const description = draft.description?.trim();
   return {
@@ -158,8 +184,11 @@ export function createSnippetFromDraft(draft: SnippetDraftInput): CommandSnippet
     ...(description ? { description } : {}),
     type: draft.type,
     tags: draft.tags,
-    projectScope: draft.projectScope?.trim() || null,
+    projectScope: draft.projectScope?.trim() || workspace.workspaceRootPath || null,
     agentScope: draft.agentScope?.trim() || null,
+    workspaceScopeId: workspace.workspaceId || null,
+    workspaceScopeName: workspace.workspaceName || null,
+    workspaceRootPath: workspace.workspaceRootPath || null,
     isPinned: draft.isPinned,
     usageCount: 0,
     lastUsedAt: null,
@@ -178,7 +207,7 @@ export function updateSnippetFromDraft(snippet: CommandSnippet, draft: SnippetDr
     ...(description ? { description } : {}),
     type: draft.type,
     tags: draft.tags,
-    projectScope: draft.projectScope?.trim() || null,
+    projectScope: draft.projectScope?.trim() || snippet.projectScope || null,
     agentScope: draft.agentScope?.trim() || null,
     isPinned: draft.isPinned,
     updatedAt: new Date().toISOString()

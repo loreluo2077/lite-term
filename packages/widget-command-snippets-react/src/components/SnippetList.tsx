@@ -5,6 +5,8 @@ import type { CommandSnippet } from "../types";
 type SnippetListProps = {
   snippets: CommandSnippet[];
   selectedId: string | null;
+  currentWorkspaceId: string;
+  currentWorkspaceRootPath: string;
   onSelect: (snippetId: string) => void;
   onTogglePin: (snippetId: string) => void;
   onMoveSelection: (direction: 1 | -1) => void;
@@ -36,7 +38,28 @@ function handleListKeydown(
   }
 }
 
-export function SnippetList({ snippets, selectedId, onSelect, onTogglePin, onMoveSelection }: SnippetListProps) {
+function isCurrentWorkspaceSnippet(
+  snippet: CommandSnippet,
+  currentWorkspaceId: string,
+  currentWorkspaceRootPath: string
+) {
+  if (currentWorkspaceId && snippet.workspaceScopeId === currentWorkspaceId) return true;
+  return Boolean(
+    currentWorkspaceRootPath &&
+      snippet.workspaceRootPath &&
+      snippet.workspaceRootPath.toLowerCase().trim() === currentWorkspaceRootPath.toLowerCase().trim()
+  );
+}
+
+export function SnippetList({
+  snippets,
+  selectedId,
+  currentWorkspaceId,
+  currentWorkspaceRootPath,
+  onSelect,
+  onTogglePin,
+  onMoveSelection
+}: SnippetListProps) {
   return (
     <section className="snippet-list" tabIndex={0} onKeyDown={(event) => {
       handleListKeydown(event, onMoveSelection);
@@ -49,6 +72,11 @@ export function SnippetList({ snippets, selectedId, onSelect, onTogglePin, onMov
         <ul className="snippet-list__items">
           {snippets.map((snippet) => {
             const active = snippet.id === selectedId;
+            const currentWorkspace = isCurrentWorkspaceSnippet(
+              snippet,
+              currentWorkspaceId,
+              currentWorkspaceRootPath
+            );
             return (
               <li key={snippet.id} className={active ? "snippet-list__item is-active" : "snippet-list__item"}>
                 <div className="snippet-list__item-top">
@@ -61,6 +89,9 @@ export function SnippetList({ snippets, selectedId, onSelect, onTogglePin, onMov
                   >
                     <div className="snippet-list__title">{snippet.title}</div>
                     <div className="snippet-list__meta">
+                      {currentWorkspace ? (
+                        <span className="snippet-scope-badge">Current workspace</span>
+                      ) : null}
                       <span className={typeClass(snippet.type)}>
                         {snippet.type}
                       </span>

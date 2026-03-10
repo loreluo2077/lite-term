@@ -75,6 +75,11 @@ const widgetApi = {
     listTabs: () => callHost("workspace.listTabs"),
     activateTab: (tabId) => callHost("workspace.activateTab", { tabId })
   },
+  storage: {
+    get: (key) => callHost("storage.get", { key }),
+    set: (key, value) => callHost("storage.set", { key, value }),
+    remove: (key) => callHost("storage.remove", { key })
+  },
   fs: {
     pickDirectory: () => callHost("fs.pickDirectory"),
     pickFile: (payload) => callHost("fs.pickFile", payload || {}),

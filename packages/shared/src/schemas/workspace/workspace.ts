@@ -74,6 +74,7 @@ export const overlayLayoutSchema = z.object({
 const workspaceLayoutBaseSchema = {
   id: z.string().min(1),
   name: z.string().min(1),
+  rootPath: z.string().default(""),
   root: paneNodeSchema,
   activePaneId: z.string().min(1),
   createdAt: z.number().int().nonnegative(),
@@ -143,6 +144,36 @@ export const workspaceIdRequestSchema = z.object({
   id: z.string().min(1)
 });
 
+export const workspaceGlobalLibraryKeySchema = z.enum([
+  "command-snippets",
+  "todos",
+  "terminal-startup-presets"
+]);
+
+export const workspaceGlobalLibraryGetRequestSchema = z.object({
+  key: workspaceGlobalLibraryKeySchema
+});
+
+export const workspaceGlobalLibrarySetRequestSchema = z.object({
+  key: workspaceGlobalLibraryKeySchema,
+  value: z.unknown()
+});
+
+export const workspaceGlobalLibraryGetResponseSchema = z.object({
+  value: z.unknown().nullable()
+});
+
+export const workspaceStorageInfoResponseSchema = z.object({
+  userDataDir: z.string().min(1),
+  storeRoot: z.string().min(1),
+  workspaceIndexPath: z.string().min(1),
+  widgetRegistryPath: z.string().min(1),
+  globalLibraryDir: z.string().min(1),
+  commandSnippetsPath: z.string().min(1),
+  todosPath: z.string().min(1),
+  terminalStartupPresetsPath: z.string().min(1)
+});
+
 export const workspaceListResponseSchema = z.object({
   workspaces: z.array(workspaceMetaSchema)
 });
@@ -165,6 +196,11 @@ export type WorkspaceSnapshotV3 = z.infer<typeof workspaceSnapshotV3Schema>;
 export type WorkspaceMeta = z.infer<typeof workspaceMetaSchema>;
 export type WorkspaceIndex = z.infer<typeof workspaceIndexSchema>;
 export type WorkspaceIdRequest = z.infer<typeof workspaceIdRequestSchema>;
+export type WorkspaceGlobalLibraryKey = z.infer<typeof workspaceGlobalLibraryKeySchema>;
+export type WorkspaceGlobalLibraryGetRequest = z.infer<typeof workspaceGlobalLibraryGetRequestSchema>;
+export type WorkspaceGlobalLibrarySetRequest = z.infer<typeof workspaceGlobalLibrarySetRequestSchema>;
+export type WorkspaceGlobalLibraryGetResponse = z.infer<typeof workspaceGlobalLibraryGetResponseSchema>;
+export type WorkspaceStorageInfoResponse = z.infer<typeof workspaceStorageInfoResponseSchema>;
 export type WorkspaceListResponse = z.infer<typeof workspaceListResponseSchema>;
 export type WorkspaceGetDefaultResponse = z.infer<typeof workspaceGetDefaultResponseSchema>;
 export type WidgetRegistrySnapshot = z.infer<typeof widgetRegistrySnapshotSchema>;

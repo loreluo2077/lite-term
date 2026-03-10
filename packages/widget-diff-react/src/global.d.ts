@@ -12,6 +12,7 @@ type WidgetApiContext = {
   input: ExtensionWidgetInput;
   workspaceId: string;
   workspaceName: string;
+  workspaceRootPath: string;
 };
 
 type WidgetStateListener = (state: Record<string, unknown>) => void;

@@ -9,8 +9,12 @@ import type {
   ResizeSessionRequest,
   SystemMetricsResponse,
   WorkspaceGetDefaultResponse,
+  WorkspaceGlobalLibraryGetRequest,
+  WorkspaceGlobalLibraryGetResponse,
+  WorkspaceGlobalLibrarySetRequest,
   WorkspaceIdRequest,
   WorkspaceListResponse,
+  WorkspaceStorageInfoResponse,
   WorkspaceSnapshot,
   WidgetRegistrySnapshot,
   FsPickDirectoryResponse,
@@ -55,6 +59,10 @@ declare global {
         close(payload: WorkspaceIdRequest): Promise<OkResponse>;
         delete(payload: WorkspaceIdRequest): Promise<OkResponse>;
         getDefault(): Promise<WorkspaceGetDefaultResponse>;
+        getGlobalLibrary(payload: WorkspaceGlobalLibraryGetRequest): Promise<WorkspaceGlobalLibraryGetResponse>;
+        setGlobalLibrary(payload: WorkspaceGlobalLibrarySetRequest): Promise<OkResponse>;
+        removeGlobalLibrary(payload: WorkspaceGlobalLibraryGetRequest): Promise<OkResponse>;
+        getStorageInfo(): Promise<WorkspaceStorageInfoResponse>;
       };
       widgetRegistry: {
         save(payload: WidgetRegistrySnapshot): Promise<OkResponse>;

@@ -1,8 +1,11 @@
 import { app, ipcMain } from "electron";
 import {
   IPC_CHANNELS,
+  workspaceGlobalLibraryGetRequestSchema,
+  workspaceGlobalLibrarySetRequestSchema,
   workspaceIdRequestSchema,
-  workspaceListResponseSchema
+  workspaceListResponseSchema,
+  workspaceStorageInfoResponseSchema
 } from "@localterm/shared";
 import {
   closeWorkspaceSnapshot,
@@ -14,6 +17,12 @@ import {
   saveWidgetRegistry,
   saveWorkspaceSnapshot
 } from "../lib/workspace-storage";
+import {
+  getWorkspaceStorageInfo,
+  readGlobalLibrary,
+  removeGlobalLibrary,
+  writeGlobalLibrary
+} from "../lib/global-library-storage";
 
 function getUserDataDir() {
   return app.getPath("userData");
@@ -46,6 +55,25 @@ export function registerWorkspaceIpcHandlers() {
 
   ipcMain.handle(IPC_CHANNELS.workspaceGetDefault, async () => {
     return await getDefaultWorkspaceSnapshot(getUserDataDir());
+  });
+
+  ipcMain.handle(IPC_CHANNELS.workspaceGlobalLibraryGet, async (_event, payload) => {
+    const { key } = workspaceGlobalLibraryGetRequestSchema.parse(payload);
+    return await readGlobalLibrary(getUserDataDir(), key);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.workspaceGlobalLibrarySet, async (_event, payload) => {
+    const { key, value } = workspaceGlobalLibrarySetRequestSchema.parse(payload);
+    return await writeGlobalLibrary(getUserDataDir(), key, value);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.workspaceGlobalLibraryRemove, async (_event, payload) => {
+    const { key } = workspaceGlobalLibraryGetRequestSchema.parse(payload);
+    return await removeGlobalLibrary(getUserDataDir(), key);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.workspaceStorageInfo, async () => {
+    return workspaceStorageInfoResponseSchema.parse(getWorkspaceStorageInfo(getUserDataDir()));
   });
 
   ipcMain.handle(IPC_CHANNELS.widgetRegistrySave, async (_event, payload) => {

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { setWidgetTitle, useWidgetContext, useWidgetState } from "./widget-api";
 import "./styles.css";
 
@@ -7,6 +7,9 @@ type TodoItem = {
   text: string;
   done: boolean;
   createdAt: number;
+  workspaceScopeId?: string | null;
+  workspaceScopeName?: string | null;
+  workspaceRootPath?: string | null;
 };
 
 type TodoFilter = "all" | "active" | "done";
@@ -22,22 +25,97 @@ const DEFAULT_STATE: TodoWidgetState = {
   filter: "all",
   draft: ""
 };
+const GLOBAL_TODOS_STORAGE_KEY = "todos";
+const LEGACY_TODOS_STORAGE_KEY = "localterm.todo.library.v1";
 
 function createTodoId() {
   return globalThis.crypto?.randomUUID?.() ?? `todo-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+function isCurrentWorkspaceTodo(
+  item: TodoItem,
+  workspaceId: string | undefined,
+  workspaceRootPath: string | undefined
+) {
+  if (workspaceId && item.workspaceScopeId === workspaceId) return true;
+  return Boolean(
+    workspaceRootPath &&
+      item.workspaceRootPath &&
+      item.workspaceRootPath.toLowerCase().trim() === workspaceRootPath.toLowerCase().trim()
+  );
+}
+
 export default function App() {
   const context = useWidgetContext();
   const { state, patchState } = useWidgetState(DEFAULT_STATE);
+  const storageBootstrappedRef = useRef(false);
   const baseButtonClass =
     "h-9 rounded-lg border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 hover:border-sky-500 disabled:cursor-not-allowed disabled:opacity-40";
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const hostStored = await window.widgetApi.storage.get(GLOBAL_TODOS_STORAGE_KEY);
+        const raw =
+          hostStored?.value ??
+          window.localStorage.getItem(LEGACY_TODOS_STORAGE_KEY) ??
+          window.localStorage.getItem(GLOBAL_TODOS_STORAGE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw) as TodoItem[];
+        if (cancelled) return;
+        await patchState({ todos: Array.isArray(parsed) ? parsed : [] });
+        if (raw && !hostStored?.value) {
+          await window.widgetApi.storage.set(GLOBAL_TODOS_STORAGE_KEY, raw);
+          window.localStorage.removeItem(LEGACY_TODOS_STORAGE_KEY);
+          window.localStorage.removeItem(GLOBAL_TODOS_STORAGE_KEY);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        console.error("load global todos failed", error);
+      } finally {
+        storageBootstrappedRef.current = true;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [patchState]);
+
+  const persistTodos = useCallback(async (todos: TodoItem[]) => {
+    try {
+      await window.widgetApi.storage.set(GLOBAL_TODOS_STORAGE_KEY, JSON.stringify(todos));
+    } catch (error) {
+      console.error("persist global todos failed", error);
+    }
+    await patchState({ todos });
+  }, [patchState]);
+
+  useEffect(() => {
+    if (!storageBootstrappedRef.current) return;
+    if (state.todos.length === 0) return;
+    void window.widgetApi.storage
+      .get(GLOBAL_TODOS_STORAGE_KEY)
+      .then(async (stored) => {
+        if (stored?.value) return;
+        await window.widgetApi.storage.set(GLOBAL_TODOS_STORAGE_KEY, JSON.stringify(state.todos));
+      })
+      .catch((error) => {
+        console.error("sync global todos fallback failed", error);
+      });
+  }, [state.todos]);
+
   const visibleTodos = useMemo(() => {
-    if (state.filter === "active") return state.todos.filter((item) => !item.done);
-    if (state.filter === "done") return state.todos.filter((item) => item.done);
-    return state.todos;
-  }, [state.filter, state.todos]);
+    let todos = state.todos;
+    if (state.filter === "active") todos = todos.filter((item) => !item.done);
+    if (state.filter === "done") todos = todos.filter((item) => item.done);
+    return [...todos].sort((left, right) => {
+      const leftScoped = context?.workspaceId ? left.workspaceScopeId === context.workspaceId : false;
+      const rightScoped = context?.workspaceId ? right.workspaceScopeId === context.workspaceId : false;
+      if (leftScoped !== rightScoped) return leftScoped ? -1 : 1;
+      return right.createdAt - left.createdAt;
+    });
+  }, [context?.workspaceId, state.filter, state.todos]);
 
   const doneCount = useMemo(
     () => state.todos.filter((item) => item.done).length,
@@ -51,7 +129,11 @@ export default function App() {
     await setWidgetTitle(`Todo (${done}/${todos.length})`).catch(() => undefined);
   };
 
-  const addTodo = async () => {
+  useEffect(() => {
+    void syncTitle(state.todos);
+  }, [state.todos]);
+
+  const addTodo = useCallback(async () => {
     const text = state.draft.trim();
     if (!text) return;
     const nextTodos = [
@@ -59,18 +141,19 @@ export default function App() {
         id: createTodoId(),
         text,
         done: false,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        workspaceScopeId: context?.workspaceId ?? null,
+        workspaceScopeName: context?.workspaceName ?? null,
+        workspaceRootPath: context?.workspaceRootPath ?? null
       },
       ...state.todos
     ];
-    await patchState({
-      todos: nextTodos,
-      draft: ""
-    });
+    await persistTodos(nextTodos);
+    await patchState({ draft: "" });
     await syncTitle(nextTodos);
-  };
+  }, [context?.workspaceId, context?.workspaceName, context?.workspaceRootPath, patchState, persistTodos, state.draft, state.todos]);
 
-  const toggleTodo = async (id: string) => {
+  const toggleTodo = useCallback(async (id: string) => {
     const nextTodos = state.todos.map((item) =>
       item.id === id
         ? {
@@ -79,21 +162,21 @@ export default function App() {
           }
         : item
     );
-    await patchState({ todos: nextTodos });
+    await persistTodos(nextTodos);
     await syncTitle(nextTodos);
-  };
+  }, [persistTodos, state.todos]);
 
-  const removeTodo = async (id: string) => {
+  const removeTodo = useCallback(async (id: string) => {
     const nextTodos = state.todos.filter((item) => item.id !== id);
-    await patchState({ todos: nextTodos });
+    await persistTodos(nextTodos);
     await syncTitle(nextTodos);
-  };
+  }, [persistTodos, state.todos]);
 
-  const clearDone = async () => {
+  const clearDone = useCallback(async () => {
     const nextTodos = state.todos.filter((item) => !item.done);
-    await patchState({ todos: nextTodos });
+    await persistTodos(nextTodos);
     await syncTitle(nextTodos);
-  };
+  }, [persistTodos, state.todos]);
 
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto_auto_auto_1fr] gap-2.5 bg-[radial-gradient(circle_at_top_left,rgba(31,41,55,1),rgba(9,9,11,1)_58%)] p-3 text-zinc-100">
@@ -170,9 +253,23 @@ export default function App() {
                     void toggleTodo(item.id);
                   }}
                 />
-                <span className={`truncate text-sm ${item.done ? "text-zinc-500 line-through" : "text-zinc-100"}`}>
-                  {item.text}
-                </span>
+                <div className="min-w-0">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className={`truncate text-sm ${item.done ? "text-zinc-500 line-through" : "text-zinc-100"}`}>
+                      {item.text}
+                    </span>
+                    {isCurrentWorkspaceTodo(item, context?.workspaceId, context?.workspaceRootPath) ? (
+                      <span className="inline-flex h-5 shrink-0 items-center rounded-full border border-sky-500/30 bg-sky-950/60 px-2 text-[10px] font-medium text-sky-100">
+                        Current workspace
+                      </span>
+                    ) : null}
+                  </div>
+                  {item.workspaceScopeName ? (
+                    <div className="mt-1 truncate text-[11px] text-zinc-500">
+                      {item.workspaceScopeName}
+                    </div>
+                  ) : null}
+                </div>
               </label>
               <button
                 type="button"

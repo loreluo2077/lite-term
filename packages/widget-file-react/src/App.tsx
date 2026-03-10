@@ -111,6 +111,17 @@ export default function App() {
 
         const stored = await api.state.get();
         if (disposed) return;
+        const normalized = normalizeState(stored);
+        if (!normalized.rootPath && context?.workspaceRootPath) {
+          const nextState = {
+            ...normalized,
+            rootPath: context.workspaceRootPath,
+            currentPath: normalized.currentPath || context.workspaceRootPath
+          };
+          applyState(nextState);
+          await api.state.set(nextState as Record<string, unknown>);
+          return;
+        }
         applyState(normalizeState(stored));
       } catch (nextError) {
         if (disposed) return;

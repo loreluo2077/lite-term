@@ -11,7 +11,11 @@ import {
   type ResizeSessionRequest,
   type WorkspaceIdRequest,
   type WorkspaceGetDefaultResponse,
+  type WorkspaceGlobalLibraryGetRequest,
+  type WorkspaceGlobalLibraryGetResponse,
+  type WorkspaceGlobalLibrarySetRequest,
   type WorkspaceListResponse,
+  type WorkspaceStorageInfoResponse,
   type WorkspaceSnapshot,
   type WidgetRegistrySnapshot,
   type FsPickDirectoryResponse,
@@ -44,7 +48,15 @@ const api = {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.workspaceList) as Promise<WorkspaceListResponse>,
     close: (payload: WorkspaceIdRequest) => ipcRenderer.invoke(IPC_CHANNELS.workspaceClose, payload),
     delete: (payload: WorkspaceIdRequest) => ipcRenderer.invoke(IPC_CHANNELS.workspaceDelete, payload),
-    getDefault: () => ipcRenderer.invoke(IPC_CHANNELS.workspaceGetDefault) as Promise<WorkspaceGetDefaultResponse>
+    getDefault: () => ipcRenderer.invoke(IPC_CHANNELS.workspaceGetDefault) as Promise<WorkspaceGetDefaultResponse>,
+    getGlobalLibrary: (payload: WorkspaceGlobalLibraryGetRequest) =>
+      ipcRenderer.invoke(IPC_CHANNELS.workspaceGlobalLibraryGet, payload) as Promise<WorkspaceGlobalLibraryGetResponse>,
+    setGlobalLibrary: (payload: WorkspaceGlobalLibrarySetRequest) =>
+      ipcRenderer.invoke(IPC_CHANNELS.workspaceGlobalLibrarySet, payload),
+    removeGlobalLibrary: (payload: WorkspaceGlobalLibraryGetRequest) =>
+      ipcRenderer.invoke(IPC_CHANNELS.workspaceGlobalLibraryRemove, payload),
+    getStorageInfo: () =>
+      ipcRenderer.invoke(IPC_CHANNELS.workspaceStorageInfo) as Promise<WorkspaceStorageInfoResponse>
   },
   widgetRegistry: {
     save: (payload: WidgetRegistrySnapshot) =>
