@@ -86,6 +86,12 @@ const widgetApi = {
     readDir: (payload) => callHost("fs.readDir", payload),
     readFile: (payload) => callHost("fs.readFile", payload)
   },
+  agentConfigs: {
+    list: (payload) => callHost("agentConfigs.list", payload || {}),
+    readFile: (payload) => callHost("agentConfigs.readFile", payload),
+    writeFile: (payload) => callHost("agentConfigs.writeFile", payload),
+    revealPath: (payload) => callHost("agentConfigs.revealPath", payload)
+  },
   git: {
     readDiff: (payload) => callHost("git.readDiff", payload)
   },

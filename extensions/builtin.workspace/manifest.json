@@ -11,7 +11,8 @@
       "note.markdown",
       "todo.react",
       "command-snippets",
-      "api-gateway"
+      "api-gateway",
+      "agent-configs"
     ],
     "commands": [],
     "widgets": [
@@ -21,13 +22,15 @@
       "note.markdown",
       "todo.react",
       "command-snippets",
-      "api-gateway"
+      "api-gateway",
+      "agent-configs"
     ]
   },
   "permissions": [
     "workspace.read",
     "workspace.write",
     "fs.read",
+    "fs.write",
     "git.read",
     "gateway.manage",
     "session.list",

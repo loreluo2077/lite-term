@@ -8,6 +8,7 @@ import {
   initializeApiGatewayService,
   registerApiGatewayIpcHandlers
 } from "../ipc/api-gateway-handlers";
+import { registerAgentConfigIpcHandlers } from "../ipc/agent-config-handlers";
 import { registerExtensionIpcHandlers } from "../ipc/extension-handlers";
 import { registerFileIpcHandlers } from "../ipc/file-handlers";
 import { registerGitIpcHandlers } from "../ipc/git-handlers";
@@ -22,6 +23,7 @@ export async function bootstrapDesktopApp() {
   registerSystemIpcHandlers();
   registerWorkspaceIpcHandlers();
   registerFileIpcHandlers();
+  registerAgentConfigIpcHandlers();
   registerGitIpcHandlers();
   registerApiGatewayIpcHandlers();
   registerExtensionIpcHandlers();

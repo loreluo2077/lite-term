@@ -3456,6 +3456,20 @@ export function App() {
           >
             API Gateway
           </button>
+          <button
+            type="button"
+            className="w-full rounded px-2 py-1.5 text-left text-zinc-200 hover:bg-zinc-800"
+            onClick={() => {
+              const paneId = paneWidgetMenu.paneId;
+              setPaneWidgetMenu(null);
+              void openWidgetTab({
+                widgetId: "agent-configs",
+                paneId
+              });
+            }}
+          >
+            Agent Configs
+          </button>
         </div>
       ) : null}
 

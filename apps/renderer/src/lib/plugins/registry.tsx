@@ -21,7 +21,8 @@ const builtinWorkspaceManifest = extensionManifestSchema.parse({
       "note.markdown",
       "todo.react",
       "command-snippets",
-      "api-gateway"
+      "api-gateway",
+      "agent-configs"
     ],
     commands: [],
     widgets: [
@@ -31,13 +32,15 @@ const builtinWorkspaceManifest = extensionManifestSchema.parse({
       "note.markdown",
       "todo.react",
       "command-snippets",
-      "api-gateway"
+      "api-gateway",
+      "agent-configs"
     ]
   },
   permissions: [
     "workspace.read",
     "workspace.write",
     "fs.read",
+    "fs.write",
     "git.read",
     "gateway.manage",
     "session.list",
@@ -130,6 +133,17 @@ const builtinTemplates: WidgetTemplate[] = [
     widgetId: "api-gateway",
     title: "API Gateway",
     defaultState: {},
+    permissions: builtinWorkspacePermissions
+  },
+  {
+    extensionId: BUILTIN_WORKSPACE_EXTENSION_ID,
+    widgetId: "agent-configs",
+    title: "Agent Configs",
+    defaultState: {
+      selectedAgent: "codex",
+      selectedPath: null,
+      selectedView: "overview"
+    },
     permissions: builtinWorkspacePermissions
   }
 ];

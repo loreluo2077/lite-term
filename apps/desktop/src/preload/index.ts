@@ -31,6 +31,12 @@ import {
   type FsReadDirResponse,
   type FsReadFileRequest,
   type FsReadFileResponse,
+  type AgentConfigListRequest,
+  type AgentConfigListResponse,
+  type AgentConfigReadFileRequest,
+  type AgentConfigReadFileResponse,
+  type AgentConfigRevealPathRequest,
+  type AgentConfigWriteFileRequest,
   type GitReadDiffRequest,
   type GitReadDiffResponse
 } from "@localterm/shared";
@@ -89,6 +95,16 @@ const api = {
       ipcRenderer.invoke(IPC_CHANNELS.fileReadDir, payload) as Promise<FsReadDirResponse>,
     readFile: (payload: FsReadFileRequest) =>
       ipcRenderer.invoke(IPC_CHANNELS.fileReadFile, payload) as Promise<FsReadFileResponse>
+  },
+  agentConfigs: {
+    list: (payload: AgentConfigListRequest) =>
+      ipcRenderer.invoke(IPC_CHANNELS.agentConfigsList, payload) as Promise<AgentConfigListResponse>,
+    readFile: (payload: AgentConfigReadFileRequest) =>
+      ipcRenderer.invoke(IPC_CHANNELS.agentConfigsReadFile, payload) as Promise<AgentConfigReadFileResponse>,
+    writeFile: (payload: AgentConfigWriteFileRequest) =>
+      ipcRenderer.invoke(IPC_CHANNELS.agentConfigsWriteFile, payload),
+    revealPath: (payload: AgentConfigRevealPathRequest) =>
+      ipcRenderer.invoke(IPC_CHANNELS.agentConfigsRevealPath, payload)
   },
   git: {
     readDiff: (payload: GitReadDiffRequest) =>

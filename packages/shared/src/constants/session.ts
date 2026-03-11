@@ -39,6 +39,10 @@ export const IPC_CHANNELS = {
   filePickFile: "file:pickFile",
   fileReadDir: "file:readDir",
   fileReadFile: "file:readFile",
+  agentConfigsList: "agentConfigs:list",
+  agentConfigsReadFile: "agentConfigs:readFile",
+  agentConfigsWriteFile: "agentConfigs:writeFile",
+  agentConfigsRevealPath: "agentConfigs:revealPath",
   gitReadDiff: "git:readDiff"
 } as const;
 

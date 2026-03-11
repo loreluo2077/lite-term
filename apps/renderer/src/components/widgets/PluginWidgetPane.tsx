@@ -420,6 +420,55 @@ export function PluginWidgetPane({
               )
             };
           }
+          case "agentConfigs.list": {
+            if (!hasPermission("fs.read")) {
+              return buildErrorResponse(requestId, "PERMISSION_DENIED", "fs.read permission is required");
+            }
+            return {
+              requestId,
+              ok: true,
+              result: await window.localtermApi.agentConfigs.list({
+                workspaceRootPath,
+                ...(params as Record<string, unknown>)
+              } as Parameters<typeof window.localtermApi.agentConfigs.list>[0])
+            };
+          }
+          case "agentConfigs.readFile": {
+            if (!hasPermission("fs.read")) {
+              return buildErrorResponse(requestId, "PERMISSION_DENIED", "fs.read permission is required");
+            }
+            return {
+              requestId,
+              ok: true,
+              result: await window.localtermApi.agentConfigs.readFile(
+                params as Parameters<typeof window.localtermApi.agentConfigs.readFile>[0]
+              )
+            };
+          }
+          case "agentConfigs.writeFile": {
+            if (!hasPermission("fs.write")) {
+              return buildErrorResponse(requestId, "PERMISSION_DENIED", "fs.write permission is required");
+            }
+            return {
+              requestId,
+              ok: true,
+              result: await window.localtermApi.agentConfigs.writeFile(
+                params as Parameters<typeof window.localtermApi.agentConfigs.writeFile>[0]
+              )
+            };
+          }
+          case "agentConfigs.revealPath": {
+            if (!hasPermission("fs.read")) {
+              return buildErrorResponse(requestId, "PERMISSION_DENIED", "fs.read permission is required");
+            }
+            return {
+              requestId,
+              ok: true,
+              result: await window.localtermApi.agentConfigs.revealPath(
+                params as Parameters<typeof window.localtermApi.agentConfigs.revealPath>[0]
+              )
+            };
+          }
           case "git.readDiff": {
             if (!hasPermission("git.read")) {
               return buildErrorResponse(requestId, "PERMISSION_DENIED", "git.read permission is required");

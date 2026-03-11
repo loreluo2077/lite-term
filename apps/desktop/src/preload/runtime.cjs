@@ -41,6 +41,12 @@ const api = {
     readDir: (payload) => ipcRenderer.invoke("file:readDir", payload),
     readFile: (payload) => ipcRenderer.invoke("file:readFile", payload)
   },
+  agentConfigs: {
+    list: (payload) => ipcRenderer.invoke("agentConfigs:list", payload),
+    readFile: (payload) => ipcRenderer.invoke("agentConfigs:readFile", payload),
+    writeFile: (payload) => ipcRenderer.invoke("agentConfigs:writeFile", payload),
+    revealPath: (payload) => ipcRenderer.invoke("agentConfigs:revealPath", payload)
+  },
   git: {
     readDiff: (payload) => ipcRenderer.invoke("git:readDiff", payload)
   },

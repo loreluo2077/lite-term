@@ -1,4 +1,5 @@
 export * from "./api-gateway";
+export * from "./agent-configs";
 export * from "./control-plane";
 export * from "./file-system";
 export * from "./git";

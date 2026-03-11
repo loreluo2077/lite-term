@@ -26,6 +26,12 @@ import type {
   FsPickDirectoryResponse,
   FsPickFileRequest,
   FsPickFileResponse,
+  AgentConfigListRequest,
+  AgentConfigListResponse,
+  AgentConfigReadFileRequest,
+  AgentConfigReadFileResponse,
+  AgentConfigRevealPathRequest,
+  AgentConfigWriteFileRequest,
   GitReadDiffRequest,
   GitReadDiffResponse,
   FsReadDirRequest,
@@ -90,6 +96,12 @@ declare global {
         pickFile(payload?: FsPickFileRequest): Promise<FsPickFileResponse>;
         readDir(payload: FsReadDirRequest): Promise<FsReadDirResponse>;
         readFile(payload: FsReadFileRequest): Promise<FsReadFileResponse>;
+      };
+      agentConfigs: {
+        list(payload: AgentConfigListRequest): Promise<AgentConfigListResponse>;
+        readFile(payload: AgentConfigReadFileRequest): Promise<AgentConfigReadFileResponse>;
+        writeFile(payload: AgentConfigWriteFileRequest): Promise<OkResponse>;
+        revealPath(payload: AgentConfigRevealPathRequest): Promise<OkResponse>;
       };
       git: {
         readDiff(payload: GitReadDiffRequest): Promise<GitReadDiffResponse>;
