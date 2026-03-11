@@ -25,10 +25,13 @@ type RuntimeState = {
   exited: boolean;
   sockets: Set<WebSocket>;
   replayableEvents: SessionWorkerControlEvent[];
+  pendingOutputChunks: Buffer[];
+  outputFlushTimer: NodeJS.Timeout | null;
 };
 
 let runtime: RuntimeState | null = null;
 let shuttingDown = false;
+const OUTPUT_FLUSH_MS = 12;
 
 function sendParent(msg: WorkerChildToParentMessage) {
   if (typeof process.send === "function") {
@@ -38,6 +41,7 @@ function sendParent(msg: WorkerChildToParentMessage) {
 
 function broadcastSocketEvent(event: SessionWorkerControlEvent) {
   if (!runtime) return;
+  flushSocketOutput();
   const serialized = JSON.stringify(event);
   for (const socket of runtime.sockets) {
     if (socket.readyState !== socket.OPEN) continue;
@@ -60,7 +64,26 @@ function emitControlEvent(event: SessionWorkerControlEvent) {
 
 function broadcastSocketOutput(chunk: Uint8Array) {
   if (!runtime) return;
-  const payload = Buffer.from(chunk);
+  runtime.pendingOutputChunks.push(Buffer.from(chunk));
+  if (runtime.outputFlushTimer) {
+    return;
+  }
+  const currentRuntime = runtime;
+  runtime.outputFlushTimer = setTimeout(() => {
+    if (!currentRuntime) return;
+    currentRuntime.outputFlushTimer = null;
+    flushSocketOutput();
+  }, OUTPUT_FLUSH_MS);
+}
+
+function flushSocketOutput() {
+  if (!runtime || runtime.pendingOutputChunks.length === 0) return;
+  const payload =
+    runtime.pendingOutputChunks.length === 1
+      ? runtime.pendingOutputChunks[0] ?? null
+      : Buffer.concat(runtime.pendingOutputChunks);
+  if (!payload) return;
+  runtime.pendingOutputChunks = [];
   for (const socket of runtime.sockets) {
     if (socket.readyState !== socket.OPEN) continue;
     socket.send(payload);
@@ -81,6 +104,11 @@ function closeServer() {
 function shutdown(exitCode = 0) {
   if (shuttingDown) return;
   shuttingDown = true;
+  if (runtime?.outputFlushTimer) {
+    clearTimeout(runtime.outputFlushTimer);
+    runtime.outputFlushTimer = null;
+  }
+  flushSocketOutput();
   try {
     runtime?.adapter.kill();
   } catch {
@@ -144,7 +172,9 @@ async function initRuntime(message: unknown) {
     ready: false,
     exited: false,
     sockets: new Set(),
-    replayableEvents: []
+    replayableEvents: [],
+    pendingOutputChunks: [],
+    outputFlushTimer: null
   };
 
   server.on("connection", (socket) => {
@@ -209,6 +239,7 @@ async function initRuntime(message: unknown) {
     if (!runtime || runtime.exited) return;
     runtime.exited = true;
     runtime.startupScriptRunner.dispose();
+    flushSocketOutput();
     broadcastSocketEvent({
       type: "exit",
       sessionId,
