@@ -10,7 +10,8 @@
       "diff.review",
       "note.markdown",
       "todo.react",
-      "command-snippets"
+      "command-snippets",
+      "api-gateway"
     ],
     "commands": [],
     "widgets": [
@@ -19,7 +20,8 @@
       "diff.review",
       "note.markdown",
       "todo.react",
-      "command-snippets"
+      "command-snippets",
+      "api-gateway"
     ]
   },
   "permissions": [
@@ -27,6 +29,7 @@
     "workspace.write",
     "fs.read",
     "git.read",
+    "gateway.manage",
     "session.list",
     "session.create",
     "session.kill"

@@ -44,7 +44,8 @@
     "build:widget:diff": "pnpm --filter @localterm/widget-diff-react build",
     "build:widget:note": "pnpm --filter @localterm/widget-note-react build",
     "build:widget:command-snippets": "pnpm --filter @localterm/widget-command-snippets-react build",
-    "build:widgets:builtin": "pnpm build:widget:terminal && pnpm build:widget:file && pnpm build:widget:diff && pnpm build:widget:note && pnpm build:widget:todo && pnpm build:widget:command-snippets",
+    "build:widget:api-gateway": "pnpm --filter @localterm/widget-api-gateway-react build",
+    "build:widgets:builtin": "pnpm build:widget:terminal && pnpm build:widget:file && pnpm build:widget:diff && pnpm build:widget:note && pnpm build:widget:todo && pnpm build:widget:command-snippets && pnpm build:widget:api-gateway",
     "debug:sessions": "tsx scripts/debug-sessions.ts",
     "kill:orphans": "tsx scripts/kill-orphans.ts",
     "perf:stress": "tsx scripts/perf-session-stress.ts"

@@ -432,6 +432,70 @@ export function PluginWidgetPane({
               )
             };
           }
+          case "gateway.getConfig": {
+            if (!hasPermission("gateway.manage")) {
+              return buildErrorResponse(requestId, "PERMISSION_DENIED", "gateway.manage permission is required");
+            }
+            return {
+              requestId,
+              ok: true,
+              result: await window.localtermApi.gateway.getConfig()
+            };
+          }
+          case "gateway.saveConfig": {
+            if (!hasPermission("gateway.manage")) {
+              return buildErrorResponse(requestId, "PERMISSION_DENIED", "gateway.manage permission is required");
+            }
+            return {
+              requestId,
+              ok: true,
+              result: await window.localtermApi.gateway.saveConfig(
+                params as Parameters<typeof window.localtermApi.gateway.saveConfig>[0]
+              )
+            };
+          }
+          case "gateway.getStatus": {
+            if (!hasPermission("gateway.manage")) {
+              return buildErrorResponse(requestId, "PERMISSION_DENIED", "gateway.manage permission is required");
+            }
+            return {
+              requestId,
+              ok: true,
+              result: await window.localtermApi.gateway.getStatus()
+            };
+          }
+          case "gateway.start": {
+            if (!hasPermission("gateway.manage")) {
+              return buildErrorResponse(requestId, "PERMISSION_DENIED", "gateway.manage permission is required");
+            }
+            return {
+              requestId,
+              ok: true,
+              result: await window.localtermApi.gateway.start()
+            };
+          }
+          case "gateway.stop": {
+            if (!hasPermission("gateway.manage")) {
+              return buildErrorResponse(requestId, "PERMISSION_DENIED", "gateway.manage permission is required");
+            }
+            return {
+              requestId,
+              ok: true,
+              result: await window.localtermApi.gateway.stop()
+            };
+          }
+          case "gateway.checkProviderHealth": {
+            if (!hasPermission("gateway.manage")) {
+              return buildErrorResponse(requestId, "PERMISSION_DENIED", "gateway.manage permission is required");
+            }
+            return {
+              requestId,
+              ok: true,
+              result: await window.localtermApi.gateway.checkProviderHealth(
+                params as Parameters<typeof window.localtermApi.gateway.checkProviderHealth>[0]
+              )
+            };
+          }
           case "terminal.create":
             if (!hasPermission("session.create")) {
               return buildErrorResponse(requestId, "PERMISSION_DENIED", "session.create permission is required");

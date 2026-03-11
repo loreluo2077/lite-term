@@ -6,7 +6,8 @@
   "main": "dist/main/index.js",
   "dependencies": {
     "@localterm/control-plane": "workspace:*",
-    "@localterm/shared": "workspace:*"
+    "@localterm/shared": "workspace:*",
+    "@mariozechner/pi-ai": "0.57.1"
   },
   "scripts": {
     "dev": "cross-env NODE_OPTIONS=--import=tsx LOCALTERM_RENDERER_URL=http://127.0.0.1:5173 electron ./src/main/index.ts",

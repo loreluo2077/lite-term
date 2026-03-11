@@ -5,6 +5,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { BrowserWindow } from "electron";
 
+let mainWindow: BrowserWindow | null = null;
+
 async function wait(ms: number) {
   return await new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
@@ -46,4 +48,15 @@ export async function createMainWindow() {
     const indexHtml = path.resolve(__dirname, "../../../renderer/dist/index.html");
     await win.loadFile(indexHtml);
   }
+
+  mainWindow = win;
+  win.on("closed", () => {
+    if (mainWindow === win) {
+      mainWindow = null;
+    }
+  });
+}
+
+export function getMainWindow() {
+  return mainWindow;
 }

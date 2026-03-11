@@ -6,6 +6,7 @@ import {
   type WorkspaceGlobalLibraryKey,
   type WorkspaceStorageInfoResponse
 } from "@localterm/shared";
+import { getApiGatewayStoragePaths } from "./api-gateway-storage";
 
 const STORE_ROOT_DIR = "workspace-store";
 const GLOBAL_LIBRARY_DIR = "global";
@@ -75,6 +76,7 @@ export async function removeGlobalLibrary(userDataDir: string, rawKey: unknown) 
 export function getWorkspaceStorageInfo(userDataDir: string): WorkspaceStorageInfoResponse {
   const storeRoot = getStoreRoot(userDataDir);
   const globalLibraryDir = getGlobalLibraryDir(userDataDir);
+  const gatewayPaths = getApiGatewayStoragePaths(userDataDir);
   return {
     userDataDir,
     storeRoot,
@@ -83,6 +85,9 @@ export function getWorkspaceStorageInfo(userDataDir: string): WorkspaceStorageIn
     globalLibraryDir,
     commandSnippetsPath: getGlobalLibraryPath(userDataDir, "command-snippets"),
     todosPath: getGlobalLibraryPath(userDataDir, "todos"),
-    terminalStartupPresetsPath: getGlobalLibraryPath(userDataDir, "terminal-startup-presets")
+    terminalStartupPresetsPath: getGlobalLibraryPath(userDataDir, "terminal-startup-presets"),
+    apiGatewayProvidersPath: gatewayPaths.providersPath,
+    apiGatewayAliasesPath: gatewayPaths.aliasesPath,
+    apiGatewaySettingsPath: gatewayPaths.settingsPath
   };
 }

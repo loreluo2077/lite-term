@@ -9,6 +9,7 @@ import {
   activeWidgetTabIdAtom as activeTabIdAtom,
   isExtensionTerminalWidgetTab,
   widgetTabsAtom as tabsAtom,
+  type TerminalCommandActivity,
   type WidgetTabRecord
 } from "../lib/widgets/state";
 import { PluginWidgetPane } from "../components/widgets/PluginWidgetPane";
@@ -139,6 +140,13 @@ type EdgePeekWidgetState = {
   title: string;
   input: ExtensionWidgetInput;
   pinned: boolean;
+};
+
+type TerminalCompletionToast = {
+  id: string;
+  tabId: string;
+  title: string;
+  description: string;
 };
 
 const BULK_STRESS_DEFAULTS = {
@@ -544,6 +552,28 @@ function resolveTerminalMetaFromInput(input: Record<string, unknown>) {
   };
 }
 
+function resolveTerminalActivityFromInput(
+  input: Record<string, unknown>
+): Omit<TerminalCommandActivity, "unreadCompletion"> {
+  const state = resolveTerminalStateFromInput(input);
+  return {
+    runState:
+      typeof state.commandRunState === "string" &&
+      ["idle", "pending", "running", "completed"].includes(state.commandRunState)
+        ? (state.commandRunState as TerminalCommandActivity["runState"])
+        : "idle",
+    lastCommandText: typeof state.lastCommandText === "string" ? state.lastCommandText : "",
+    lastCommandSubmittedAt:
+      typeof state.lastCommandSubmittedAt === "number" && Number.isFinite(state.lastCommandSubmittedAt)
+        ? Math.max(0, Math.floor(state.lastCommandSubmittedAt))
+        : 0,
+    lastCommandCompletedAt:
+      typeof state.lastCommandCompletedAt === "number" && Number.isFinite(state.lastCommandCompletedAt)
+        ? Math.max(0, Math.floor(state.lastCommandCompletedAt))
+        : 0
+  };
+}
+
 async function writeSessionInputBySessionId(sessionId: string, data: string) {
   const listed = await window.localtermApi.session.listSessions();
   const matched = listed.sessions.find((entry) => entry.sessionId === sessionId);
@@ -697,6 +727,13 @@ function toPersistedTabDescriptors(records: WidgetTabRecord[]): WidgetTabDescrip
 
 function hydrateWidgetRecordFromDescriptor(descriptor: WidgetTabDescriptor): WidgetTabRecord {
   const widget = resolveWidgetDescriptorFromTabDescriptor(descriptor);
+  const terminalActivity =
+    widget.kind === "extension.widget" && isBuiltinTerminalExtensionInput(widget.input)
+      ? {
+          ...resolveTerminalActivityFromInput(widget.input),
+          unreadCompletion: false
+        }
+      : undefined;
   return {
     id: descriptor.id,
     widgetKind: widget.kind,
@@ -707,7 +744,8 @@ function hydrateWidgetRecordFromDescriptor(descriptor: WidgetTabDescriptor): Wid
       widget.kind === "extension.widget" && isBuiltinTerminalExtensionInput(widget.input)
         ? "starting"
         : "idle",
-    wsConnected: false
+    wsConnected: false,
+    ...(terminalActivity ? { terminalActivity } : {})
   };
 }
 
@@ -803,6 +841,7 @@ export function App() {
   const [dropPreview, setDropPreview] = useState<DropPreview>(null);
   const [tabContextMenu, setTabContextMenu] = useState<TabContextMenuState>(null);
   const [tabInfoDialog, setTabInfoDialog] = useState<TabInfoDialogState>(null);
+  const [terminalCompletionToasts, setTerminalCompletionToasts] = useState<TerminalCompletionToast[]>([]);
   const [, setTabDragInProgress] = useState(false);
   const [parkedTabHost, setParkedTabHost] = useState<HTMLDivElement | null>(null);
   const tabMountHostsRef = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -815,6 +854,8 @@ export function App() {
   const [edgePeekSnippetsOpen, setEdgePeekSnippetsOpen] = useState(false);
   const tabCounterRef = useRef(0);
   const tabsRef = useRef<WidgetTabRecord[]>([]);
+  const terminalCompletionSeenRef = useRef<Map<string, number>>(new Map());
+  const windowFocusedRef = useRef(true);
   const workspaceSnapshotCacheRef = useRef<Map<string, WorkspaceSnapshot>>(new Map());
   const restoringWorkspaceRef = useRef(false);
   const edgePeekCloseTimerRef = useRef<number | null>(null);
@@ -919,6 +960,135 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const markFocused = () => {
+      windowFocusedRef.current = true;
+    };
+    const markBlurred = () => {
+      windowFocusedRef.current = false;
+    };
+    const handleVisibilityChange = () => {
+      windowFocusedRef.current = document.visibilityState === "visible" && document.hasFocus();
+    };
+    window.addEventListener("focus", markFocused);
+    window.addEventListener("blur", markBlurred);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", markFocused);
+      window.removeEventListener("blur", markBlurred);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeTabId) return;
+    setTabs((prev) =>
+      prev.map((tab) =>
+        tab.id === activeTabId && tab.terminalActivity?.unreadCompletion
+          ? {
+              ...tab,
+              terminalActivity: {
+                ...tab.terminalActivity,
+                unreadCompletion: false
+              }
+            }
+          : tab
+      )
+    );
+  }, [activeTabId, setTabs]);
+
+  useEffect(() => {
+    if (terminalCompletionToasts.length === 0) return;
+    const timer = window.setTimeout(() => {
+      setTerminalCompletionToasts((prev) => prev.slice(1));
+    }, 4200);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [terminalCompletionToasts]);
+
+  useEffect(() => {
+    const terminalTabs = tabs
+      .filter(
+        (tab) =>
+          isExtensionTerminalWidgetTab(tab) &&
+          tab.terminalActivity
+      )
+      .map((tab) => ({
+        tabId: tab.id,
+        title: tab.title,
+        activity: tab.terminalActivity as TerminalCommandActivity
+      }));
+
+    for (const entry of terminalTabs) {
+      if (!terminalCompletionSeenRef.current.has(entry.tabId)) {
+        terminalCompletionSeenRef.current.set(entry.tabId, entry.activity.lastCommandCompletedAt);
+      }
+    }
+
+    const completionEvents = terminalTabs.filter((entry) => entry.activity.lastCommandCompletedAt > 0);
+
+    const pendingNotifications: Array<{ tabId: string; title: string; description: string }> = [];
+
+    for (const entry of completionEvents) {
+      const lastSeen = terminalCompletionSeenRef.current.get(entry.tabId) ?? 0;
+      if (entry.activity.lastCommandCompletedAt <= lastSeen) {
+        continue;
+      }
+      terminalCompletionSeenRef.current.set(entry.tabId, entry.activity.lastCommandCompletedAt);
+      pendingNotifications.push({
+        tabId: entry.tabId,
+        title: entry.title,
+        description: entry.activity.lastCommandText || "CLI command finished"
+      });
+    }
+
+    if (pendingNotifications.length === 0) return;
+
+    const inactiveTabIds = new Set(
+      pendingNotifications
+        .filter((entry) => entry.tabId !== activeTabId)
+        .map((entry) => entry.tabId)
+    );
+
+    if (inactiveTabIds.size > 0) {
+      setTabs((prev) =>
+        prev.map((tab) =>
+          inactiveTabIds.has(tab.id) && tab.terminalActivity
+            ? {
+                ...tab,
+                terminalActivity: {
+                  ...tab.terminalActivity,
+                  unreadCompletion: true
+                }
+              }
+            : tab
+        )
+      );
+    }
+
+    setTerminalCompletionToasts((prev) => [
+      ...prev,
+      ...pendingNotifications.map((entry) => ({
+        id: `${entry.tabId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+        tabId: entry.tabId,
+        title: "CLI task completed",
+        description: "Open the terminal tab to review output."
+      }))
+    ]);
+
+    if (!windowFocusedRef.current) {
+      for (const entry of pendingNotifications) {
+        void window.localtermApi.system
+          .notify({
+            title: "LocalTerm",
+            body: "CLI task completed. Open the terminal tab to review output."
+          })
+          .catch(() => undefined);
+      }
+    }
+  }, [activeTabId, setTabs, tabs]);
+
   const updateTabInput = useCallback((tabId: string, input: Record<string, unknown>) => {
     setTabs((prev) =>
       prev.map((tab) =>
@@ -941,10 +1111,15 @@ export function App() {
                   ? (nextStatusRaw as WidgetTabRecord["status"])
                   : base.status;
               const wsConnected = state.wsConnected === true;
+              const nextActivity = resolveTerminalActivityFromInput(input);
               return {
                 ...base,
                 status: nextStatus,
-                wsConnected
+                wsConnected,
+                terminalActivity: {
+                  ...nextActivity,
+                  unreadCompletion: tab.terminalActivity?.unreadCompletion ?? false
+                }
               };
             })()
           : tab
@@ -2664,6 +2839,22 @@ export function App() {
                     className="flex items-center gap-1 rounded-md border border-transparent px-1"
                   >
                     <TabsTrigger value={tab.id} className="max-w-[180px]">
+                      {tab.terminalActivity?.runState === "running" ? (
+                        <span
+                          aria-hidden="true"
+                          className="mr-1 inline-block h-3 w-3 animate-spin rounded-full border border-sky-400 border-t-transparent"
+                        />
+                      ) : tab.terminalActivity?.runState === "pending" ? (
+                        <span
+                          aria-hidden="true"
+                          className="mr-1 inline-block h-2 w-2 rounded-full bg-amber-400"
+                        />
+                      ) : tab.terminalActivity?.unreadCompletion ? (
+                        <span
+                          aria-hidden="true"
+                          className="mr-1 inline-block h-2 w-2 rounded-full bg-emerald-400"
+                        />
+                      ) : null}
                       {renamingTabId === tab.id ? (
                         <input
                           className="h-6 w-[120px] rounded border border-zinc-700 bg-zinc-950 px-1 text-xs text-zinc-100 outline-none"
@@ -3251,6 +3442,20 @@ export function App() {
           >
             Snippets
           </button>
+          <button
+            type="button"
+            className="w-full rounded px-2 py-1.5 text-left text-zinc-200 hover:bg-zinc-800"
+            onClick={() => {
+              const paneId = paneWidgetMenu.paneId;
+              setPaneWidgetMenu(null);
+              void openWidgetTab({
+                widgetId: "api-gateway",
+                paneId
+              });
+            }}
+          >
+            API Gateway
+          </button>
         </div>
       ) : null}
 
@@ -3482,6 +3687,28 @@ export function App() {
             </div>
           );
         })()
+      ) : null}
+
+      {terminalCompletionToasts.length > 0 ? (
+        <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex max-w-[320px] flex-col gap-2">
+          {terminalCompletionToasts.map((toast) => (
+            <button
+              key={toast.id}
+              type="button"
+              className="pointer-events-auto rounded-xl border border-emerald-500/25 bg-zinc-950/92 px-3 py-2 text-left shadow-2xl backdrop-blur transition hover:border-emerald-400/40"
+              onClick={() => {
+                activateTabFromWidgetApi(toast.tabId);
+                setTerminalCompletionToasts((prev) => prev.filter((entry) => entry.id !== toast.id));
+              }}
+            >
+              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-300">
+                Command Complete
+              </div>
+              <div className="mt-1 text-sm font-medium text-zinc-100">{toast.title}</div>
+              <div className="mt-1 truncate text-xs text-zinc-400">{toast.description}</div>
+            </button>
+          ))}
+        </div>
       ) : null}
 
       <Dialog
@@ -3907,7 +4134,7 @@ export function App() {
               Current workspace and global library files are stored under these paths.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 text-sm text-zinc-200">
+          <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1 text-sm text-zinc-200">
             {workspaceStorageInfo ? (
               [
                 ["User Data", workspaceStorageInfo.userDataDir],
@@ -3917,7 +4144,10 @@ export function App() {
                 ["Global Library Dir", workspaceStorageInfo.globalLibraryDir],
                 ["Command Snippets", workspaceStorageInfo.commandSnippetsPath],
                 ["Todos", workspaceStorageInfo.todosPath],
-                ["Terminal Presets", workspaceStorageInfo.terminalStartupPresetsPath]
+                ["Terminal Presets", workspaceStorageInfo.terminalStartupPresetsPath],
+                ["API Gateway Providers", workspaceStorageInfo.apiGatewayProvidersPath],
+                ["API Gateway Aliases", workspaceStorageInfo.apiGatewayAliasesPath],
+                ["API Gateway Settings", workspaceStorageInfo.apiGatewaySettingsPath]
               ].map(([label, value]) => (
                 <div key={label} className="rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2">
                   <div className="text-xs text-zinc-400">{label}</div>

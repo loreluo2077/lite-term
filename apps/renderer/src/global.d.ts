@@ -8,6 +8,7 @@ import type {
   OkResponse,
   ResizeSessionRequest,
   SystemMetricsResponse,
+  SystemNotifyRequest,
   WorkspaceGetDefaultResponse,
   WorkspaceGlobalLibraryGetRequest,
   WorkspaceGlobalLibraryGetResponse,
@@ -17,6 +18,11 @@ import type {
   WorkspaceStorageInfoResponse,
   WorkspaceSnapshot,
   WidgetRegistrySnapshot,
+  ApiGatewayConfig,
+  ApiGatewaySaveConfigRequest,
+  ApiGatewayStatus,
+  ApiGatewayCheckProviderHealthRequest,
+  ApiGatewayCheckProviderHealthResponse,
   FsPickDirectoryResponse,
   FsPickFileRequest,
   FsPickFileResponse,
@@ -51,6 +57,7 @@ declare global {
       };
       system: {
         getMetrics(): Promise<SystemMetricsResponse>;
+        notify(payload: SystemNotifyRequest): Promise<OkResponse>;
       };
       workspace: {
         save(payload: WorkspaceSnapshot): Promise<OkResponse>;
@@ -63,6 +70,16 @@ declare global {
         setGlobalLibrary(payload: WorkspaceGlobalLibrarySetRequest): Promise<OkResponse>;
         removeGlobalLibrary(payload: WorkspaceGlobalLibraryGetRequest): Promise<OkResponse>;
         getStorageInfo(): Promise<WorkspaceStorageInfoResponse>;
+      };
+      gateway: {
+        getConfig(): Promise<ApiGatewayConfig>;
+        saveConfig(payload: ApiGatewaySaveConfigRequest): Promise<ApiGatewayConfig>;
+        getStatus(): Promise<ApiGatewayStatus>;
+        start(): Promise<ApiGatewayStatus>;
+        stop(): Promise<ApiGatewayStatus>;
+        checkProviderHealth(
+          payload: ApiGatewayCheckProviderHealthRequest
+        ): Promise<ApiGatewayCheckProviderHealthResponse>;
       };
       widgetRegistry: {
         save(payload: WidgetRegistrySnapshot): Promise<OkResponse>;

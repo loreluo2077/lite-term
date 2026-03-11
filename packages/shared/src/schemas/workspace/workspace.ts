@@ -171,7 +171,10 @@ export const workspaceStorageInfoResponseSchema = z.object({
   globalLibraryDir: z.string().min(1),
   commandSnippetsPath: z.string().min(1),
   todosPath: z.string().min(1),
-  terminalStartupPresetsPath: z.string().min(1)
+  terminalStartupPresetsPath: z.string().min(1),
+  apiGatewayProvidersPath: z.string().min(1),
+  apiGatewayAliasesPath: z.string().min(1),
+  apiGatewaySettingsPath: z.string().min(1)
 });
 
 export const workspaceListResponseSchema = z.object({

@@ -4,20 +4,28 @@
  */
 import { app } from "electron";
 import { registerExtensionProtocol } from "../extensions/extension-protocol";
+import {
+  initializeApiGatewayService,
+  registerApiGatewayIpcHandlers
+} from "../ipc/api-gateway-handlers";
 import { registerExtensionIpcHandlers } from "../ipc/extension-handlers";
 import { registerFileIpcHandlers } from "../ipc/file-handlers";
 import { registerGitIpcHandlers } from "../ipc/git-handlers";
 import { createMainWindow } from "../window/create-main-window";
 import { registerSessionIpcHandlers } from "../ipc/session-handlers";
+import { registerSystemIpcHandlers } from "../ipc/system-handlers";
 import { registerWorkspaceIpcHandlers } from "../ipc/workspace-handlers";
 
 export async function bootstrapDesktopApp() {
   registerExtensionProtocol();
   registerSessionIpcHandlers();
+  registerSystemIpcHandlers();
   registerWorkspaceIpcHandlers();
   registerFileIpcHandlers();
   registerGitIpcHandlers();
+  registerApiGatewayIpcHandlers();
   registerExtensionIpcHandlers();
+  await initializeApiGatewayService();
   await createMainWindow();
 }
 

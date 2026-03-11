@@ -89,6 +89,14 @@ const widgetApi = {
   git: {
     readDiff: (payload) => callHost("git.readDiff", payload)
   },
+  gateway: {
+    getConfig: () => callHost("gateway.getConfig"),
+    saveConfig: (payload) => callHost("gateway.saveConfig", payload),
+    getStatus: () => callHost("gateway.getStatus"),
+    start: () => callHost("gateway.start"),
+    stop: () => callHost("gateway.stop"),
+    checkProviderHealth: (payload) => callHost("gateway.checkProviderHealth", payload)
+  },
   terminal: {
     create: (payload) => callHost("terminal.create", payload),
     write: (payload) => callHost("terminal.write", payload),

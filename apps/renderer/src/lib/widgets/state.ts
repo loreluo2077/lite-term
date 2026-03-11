@@ -12,6 +12,16 @@ import type {
 import { extensionWidgetInputSchema } from "@localterm/shared";
 
 export type WidgetLifecycleStatus = "idle" | SessionStatus;
+export type TerminalCommandRunState = "idle" | "pending" | "running" | "completed";
+
+export type TerminalCommandActivity = {
+  runState: TerminalCommandRunState;
+  lastCommandText: string;
+  lastCommandSubmittedAt: number;
+  lastCommandCompletedAt: number;
+  unreadCompletion: boolean;
+};
+
 export type TabWidget = {
   kind: WidgetKind;
   input: Record<string, unknown>;
@@ -26,6 +36,7 @@ type BaseWidgetTabRecord = {
   status: WidgetLifecycleStatus;
   wsConnected: boolean;
   session?: CreateLocalSessionResponse | undefined;
+  terminalActivity?: TerminalCommandActivity | undefined;
 };
 
 export type WidgetTabRecord = BaseWidgetTabRecord;

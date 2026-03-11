@@ -6,6 +6,7 @@ import {
   IPC_CHANNELS,
   type ExtensionHostConfig,
   type SystemMetricsResponse,
+  type SystemNotifyRequest,
   type CreateLocalSessionRequest,
   type KillSessionRequest,
   type ResizeSessionRequest,
@@ -18,6 +19,11 @@ import {
   type WorkspaceStorageInfoResponse,
   type WorkspaceSnapshot,
   type WidgetRegistrySnapshot,
+  type ApiGatewayConfig,
+  type ApiGatewaySaveConfigRequest,
+  type ApiGatewayStatus,
+  type ApiGatewayCheckProviderHealthRequest,
+  type ApiGatewayCheckProviderHealthResponse,
   type FsPickDirectoryResponse,
   type FsPickFileRequest,
   type FsPickFileResponse,
@@ -40,7 +46,9 @@ const api = {
     listSessions: () => ipcRenderer.invoke(IPC_CHANNELS.sessionList)
   },
   system: {
-    getMetrics: () => ipcRenderer.invoke(IPC_CHANNELS.systemMetrics) as Promise<SystemMetricsResponse>
+    getMetrics: () => ipcRenderer.invoke(IPC_CHANNELS.systemMetrics) as Promise<SystemMetricsResponse>,
+    notify: (payload: SystemNotifyRequest) =>
+      ipcRenderer.invoke(IPC_CHANNELS.systemNotify, payload)
   },
   workspace: {
     save: (payload: WorkspaceSnapshot) => ipcRenderer.invoke(IPC_CHANNELS.workspaceSave, payload),
@@ -57,6 +65,16 @@ const api = {
       ipcRenderer.invoke(IPC_CHANNELS.workspaceGlobalLibraryRemove, payload),
     getStorageInfo: () =>
       ipcRenderer.invoke(IPC_CHANNELS.workspaceStorageInfo) as Promise<WorkspaceStorageInfoResponse>
+  },
+  gateway: {
+    getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.apiGatewayGetConfig) as Promise<ApiGatewayConfig>,
+    saveConfig: (payload: ApiGatewaySaveConfigRequest) =>
+      ipcRenderer.invoke(IPC_CHANNELS.apiGatewaySaveConfig, payload) as Promise<ApiGatewayConfig>,
+    getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.apiGatewayGetStatus) as Promise<ApiGatewayStatus>,
+    start: () => ipcRenderer.invoke(IPC_CHANNELS.apiGatewayStart) as Promise<ApiGatewayStatus>,
+    stop: () => ipcRenderer.invoke(IPC_CHANNELS.apiGatewayStop) as Promise<ApiGatewayStatus>,
+    checkProviderHealth: (payload: ApiGatewayCheckProviderHealthRequest) =>
+      ipcRenderer.invoke(IPC_CHANNELS.apiGatewayCheckProviderHealth, payload) as Promise<ApiGatewayCheckProviderHealthResponse>
   },
   widgetRegistry: {
     save: (payload: WidgetRegistrySnapshot) =>

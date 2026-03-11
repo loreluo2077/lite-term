@@ -20,7 +20,8 @@ const builtinWorkspaceManifest = extensionManifestSchema.parse({
       "diff.review",
       "note.markdown",
       "todo.react",
-      "command-snippets"
+      "command-snippets",
+      "api-gateway"
     ],
     commands: [],
     widgets: [
@@ -29,7 +30,8 @@ const builtinWorkspaceManifest = extensionManifestSchema.parse({
       "diff.review",
       "note.markdown",
       "todo.react",
-      "command-snippets"
+      "command-snippets",
+      "api-gateway"
     ]
   },
   permissions: [
@@ -37,6 +39,7 @@ const builtinWorkspaceManifest = extensionManifestSchema.parse({
     "workspace.write",
     "fs.read",
     "git.read",
+    "gateway.manage",
     "session.list",
     "session.create",
     "session.kill"
@@ -60,7 +63,11 @@ const builtinTemplates: WidgetTemplate[] = [
       pid: 0,
       status: "idle",
       wsConnected: false,
-      startupScripts: []
+      startupScripts: [],
+      commandRunState: "idle",
+      lastCommandText: "",
+      lastCommandSubmittedAt: 0,
+      lastCommandCompletedAt: 0
     },
     permissions: builtinWorkspacePermissions
   },
@@ -116,6 +123,13 @@ const builtinTemplates: WidgetTemplate[] = [
     defaultState: {
       snippets: []
     },
+    permissions: builtinWorkspacePermissions
+  },
+  {
+    extensionId: BUILTIN_WORKSPACE_EXTENSION_ID,
+    widgetId: "api-gateway",
+    title: "API Gateway",
+    defaultState: {},
     permissions: builtinWorkspacePermissions
   }
 ];

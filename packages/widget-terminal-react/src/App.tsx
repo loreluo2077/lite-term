@@ -3,6 +3,11 @@ import type { LocalSessionStartupScript } from "@localterm/shared";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
+import {
+  consumeTerminalInput,
+  normalizeCommandText,
+  type TerminalCommandRunState
+} from "./command-activity";
 import { errorMessage, getWidgetApi } from "./widget-api";
 
 type TerminalWidgetState = {
@@ -15,6 +20,10 @@ type TerminalWidgetState = {
   status: string;
   wsConnected: boolean;
   startupScripts: LocalSessionStartupScript[];
+  commandRunState: TerminalCommandRunState;
+  lastCommandText: string;
+  lastCommandSubmittedAt: number;
+  lastCommandCompletedAt: number;
 };
 
 type ContextMenuState = {
@@ -44,10 +53,15 @@ const DEFAULT_STATE: TerminalWidgetState = {
   pid: 0,
   status: "idle",
   wsConnected: false,
-  startupScripts: []
+  startupScripts: [],
+  commandRunState: "idle",
+  lastCommandText: "",
+  lastCommandSubmittedAt: 0,
+  lastCommandCompletedAt: 0
 };
 
 const decoder = new TextDecoder();
+const COMMAND_SILENCE_MS = 3200;
 
 function normalizeState(raw: Record<string, unknown> | null | undefined): TerminalWidgetState {
   const source = raw ?? {};
@@ -62,7 +76,19 @@ function normalizeState(raw: Record<string, unknown> | null | undefined): Termin
     wsConnected: source.wsConnected === true,
     startupScripts: Array.isArray(source.startupScripts)
       ? (source.startupScripts as LocalSessionStartupScript[])
-      : []
+      : [],
+    commandRunState:
+      typeof source.commandRunState === "string" &&
+      ["idle", "pending", "running", "completed"].includes(source.commandRunState)
+        ? (source.commandRunState as TerminalCommandRunState)
+        : "idle",
+    lastCommandText: typeof source.lastCommandText === "string" ? source.lastCommandText : "",
+    lastCommandSubmittedAt: Number.isFinite(source.lastCommandSubmittedAt)
+      ? Math.max(0, Math.floor(source.lastCommandSubmittedAt as number))
+      : 0,
+    lastCommandCompletedAt: Number.isFinite(source.lastCommandCompletedAt)
+      ? Math.max(0, Math.floor(source.lastCommandCompletedAt as number))
+      : 0
   };
 }
 
@@ -149,6 +175,8 @@ export default function App() {
   const resizeTimerRef = useRef<number | null>(null);
   const terminalDisposablesRef = useRef<Disposable[]>([]);
   const readyHideTimerRef = useRef<number | null>(null);
+  const commandSilenceTimerRef = useRef<number | null>(null);
+  const inputBufferRef = useRef("");
 
   const applyState = useCallback((next: TerminalWidgetState) => {
     stateRef.current = next;
@@ -190,6 +218,50 @@ export default function App() {
       readyHideTimerRef.current = null;
     }
   }, []);
+
+  const clearCommandSilenceTimer = useCallback(() => {
+    if (commandSilenceTimerRef.current != null) {
+      window.clearTimeout(commandSilenceTimerRef.current);
+      commandSilenceTimerRef.current = null;
+    }
+  }, []);
+
+  const markCommandCompleted = useCallback(async () => {
+    clearCommandSilenceTimer();
+    const snapshot = stateRef.current;
+    if (snapshot.commandRunState === "idle" || snapshot.commandRunState === "completed") {
+      return;
+    }
+    await patchState({
+      commandRunState: "completed",
+      lastCommandCompletedAt: Date.now()
+    });
+  }, [clearCommandSilenceTimer, patchState]);
+
+  const scheduleCommandSilenceCheck = useCallback(() => {
+    clearCommandSilenceTimer();
+    commandSilenceTimerRef.current = window.setTimeout(() => {
+      commandSilenceTimerRef.current = null;
+      void markCommandCompleted().catch(() => undefined);
+    }, COMMAND_SILENCE_MS);
+  }, [clearCommandSilenceTimer, markCommandCompleted]);
+
+  const handleTerminalOutputActivity = useCallback(
+    async (text: string) => {
+      if (!text) return;
+      const snapshot = stateRef.current;
+      if (snapshot.commandRunState === "idle" && snapshot.lastCommandSubmittedAt === 0) {
+        return;
+      }
+      if (snapshot.commandRunState === "pending" || snapshot.commandRunState === "completed") {
+        await patchState({
+          commandRunState: "running"
+        });
+      }
+      scheduleCommandSilenceCheck();
+    },
+    [patchState, scheduleCommandSilenceCheck]
+  );
 
   const transitionBootPhase = useCallback(
     (next: BootPhase) => {
@@ -293,13 +365,23 @@ export default function App() {
             }
             if (control.type === "exit") {
               appendSystemLine(`[session exited] code=${control.exitCode ?? "null"}`);
-              void patchState({ status: "exited", wsConnected: false }).catch(() => undefined);
+              clearCommandSilenceTimer();
+              void patchState({
+                status: "exited",
+                wsConnected: false,
+                commandRunState: "idle"
+              }).catch(() => undefined);
               transitionBootPhase("exited");
               return;
             }
             if (control.type === "error") {
               appendSystemLine(`[session error] ${control.message ?? "unknown"}`);
-              void patchState({ status: "error", wsConnected: false }).catch(() => undefined);
+              clearCommandSilenceTimer();
+              void patchState({
+                status: "error",
+                wsConnected: false,
+                commandRunState: "idle"
+              }).catch(() => undefined);
               transitionBootPhase("error");
               return;
             }
@@ -329,6 +411,7 @@ export default function App() {
             }
           } catch {
             terminal.write(event.data);
+            void handleTerminalOutputActivity(event.data).catch(() => undefined);
             return;
           }
           return;
@@ -337,6 +420,7 @@ export default function App() {
         if (event.data instanceof ArrayBuffer) {
           const text = decoder.decode(event.data);
           terminal.write(text);
+          void handleTerminalOutputActivity(text).catch(() => undefined);
         }
       });
 
@@ -344,6 +428,7 @@ export default function App() {
         if (wsRef.current === ws) {
           wsRef.current = null;
         }
+        clearCommandSilenceTimer();
         void patchState({ wsConnected: false }).catch(() => undefined);
       });
 
@@ -352,7 +437,15 @@ export default function App() {
         transitionBootPhase("error");
       });
     },
-    [appendSystemLine, closeWs, patchState, scheduleTerminalSizeSync, transitionBootPhase]
+    [
+      appendSystemLine,
+      clearCommandSilenceTimer,
+      closeWs,
+      handleTerminalOutputActivity,
+      patchState,
+      scheduleTerminalSizeSync,
+      transitionBootPhase
+    ]
   );
 
   const ensureSession = useCallback(async () => {
@@ -454,6 +547,37 @@ export default function App() {
 
     terminalDisposablesRef.current.push(
       terminal.onData((data) => {
+        const activity = consumeTerminalInput(
+          inputBufferRef.current,
+          data,
+          stateRef.current.commandRunState
+        );
+        inputBufferRef.current = activity.nextBuffer;
+
+        if (activity.shouldResetCompleted && stateRef.current.commandRunState === "completed") {
+          void patchState({
+            commandRunState: "idle"
+          }).catch(() => undefined);
+        }
+
+        if (activity.interrupted) {
+          clearCommandSilenceTimer();
+          void patchState({
+            commandRunState: "idle"
+          }).catch(() => undefined);
+        }
+
+        const submittedCommand = activity.submittedCommands.at(-1);
+        if (submittedCommand) {
+          clearCommandSilenceTimer();
+          void patchState({
+            commandRunState: "pending",
+            lastCommandText: normalizeCommandText(submittedCommand),
+            lastCommandSubmittedAt: Date.now()
+          }).catch(() => undefined);
+          scheduleCommandSilenceCheck();
+        }
+
         void writeInput(data).catch((error) => {
           appendSystemLine(`[write error] ${errorMessage(error)}`);
         });
@@ -468,7 +592,14 @@ export default function App() {
     });
     observer.observe(hostRef.current);
     resizeObserverRef.current = observer;
-  }, [appendSystemLine, scheduleTerminalSizeSync, writeInput]);
+  }, [
+    appendSystemLine,
+    clearCommandSilenceTimer,
+    patchState,
+    scheduleCommandSilenceCheck,
+    scheduleTerminalSizeSync,
+    writeInput
+  ]);
 
   const handleCopySelection = useCallback(async () => {
     const terminal = terminalRef.current;
@@ -563,10 +694,21 @@ export default function App() {
       terminalRef.current = null;
       fitAddonRef.current = null;
 
+      clearCommandSilenceTimer();
       clearReadyHideTimer();
       closeWs();
     };
-  }, [api, appendSystemLine, applyState, clearReadyHideTimer, closeWs, ensureSession, initTerminal, scheduleTerminalSizeSync]);
+  }, [
+    api,
+    appendSystemLine,
+    applyState,
+    clearCommandSilenceTimer,
+    clearReadyHideTimer,
+    closeWs,
+    ensureSession,
+    initTerminal,
+    scheduleTerminalSizeSync
+  ]);
 
   const progress = phaseProgress(bootPhase);
   const progressSteps = [
@@ -579,6 +721,22 @@ export default function App() {
   const stepIndex = progressSteps.findIndex((entry) => entry.key === bootPhase);
   const activeStepIndex = stepIndex >= 0 ? stepIndex : bootPhase === "error" || bootPhase === "exited" ? 4 : 0;
   const hasStartupScripts = stateRef.current.startupScripts.length > 0;
+  const commandStatusTone =
+    stateRef.current.commandRunState === "running"
+      ? "text-sky-100 border-sky-500/40 bg-sky-500/14"
+      : stateRef.current.commandRunState === "pending"
+        ? "text-amber-100 border-amber-500/40 bg-amber-500/14"
+        : stateRef.current.commandRunState === "completed"
+          ? "text-emerald-100 border-emerald-500/40 bg-emerald-500/14"
+          : "text-zinc-300 border-zinc-700/80 bg-zinc-900/80";
+  const commandStatusLabel =
+    stateRef.current.commandRunState === "running"
+      ? "Command running"
+      : stateRef.current.commandRunState === "pending"
+        ? "Waiting for output"
+        : stateRef.current.commandRunState === "completed"
+          ? "Command complete"
+          : "Terminal idle";
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -658,6 +816,26 @@ export default function App() {
             复制
           </button>
         ) : null}
+
+        <div
+          className={`pointer-events-none absolute bottom-3 right-3 z-20 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-medium backdrop-blur ${commandStatusTone}`}
+        >
+          {stateRef.current.commandRunState === "running" ? (
+            <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
+          ) : stateRef.current.commandRunState === "pending" ? (
+            <span className="h-2 w-2 rounded-full bg-current/90" />
+          ) : stateRef.current.commandRunState === "completed" ? (
+            <span className="text-[12px] leading-none">●</span>
+          ) : (
+            <span className="h-2 w-2 rounded-full bg-current/70" />
+          )}
+          <span>{commandStatusLabel}</span>
+          {stateRef.current.lastCommandText ? (
+            <span className="max-w-[220px] truncate text-[10px] opacity-75">
+              {stateRef.current.lastCommandText}
+            </span>
+          ) : null}
+        </div>
       </section>
 
       {contextMenu ? (
