@@ -125,3 +125,28 @@ Session 仅属于本地终端类 widget 的运行时资源（`extension terminal
 - 多会话并发无串线、无端口冲突
 - workspace/tab 切换与冷启动恢复行为符合预期
 - 关闭 `extension terminal` 后，对应 session 应从 `session.list` 中消失
+
+### 9.1 多 terminal 并发输入人工验证
+
+- 目标: 验证一个 terminal 持续高频输出时，不会明显影响另一个 terminal 的输入
+- 步骤:
+- 打开两个 `extension terminal`
+- 在左侧 terminal 执行持续输出脚本:
+
+```bash
+node -e "let i=0; setInterval(() => console.log('__STRESS__ ' + (i++)), 1)"
+```
+
+- 如需更高输出压力，可执行:
+
+```bash
+node -e "let i=0; const payload='x'.repeat(400); setInterval(() => console.log('__STRESS__ ' + (i++) + ' ' + payload), 1)"
+```
+
+- 在右侧 terminal 连续快速输入较长命令或文本
+- 观察是否出现:
+- 丢字
+- 明显卡顿
+- 光标跳动异常
+- 回显延迟过高
+- 结束压力脚本时使用 `Ctrl+C`
